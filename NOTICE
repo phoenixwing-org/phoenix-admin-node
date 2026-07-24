@@ -1,0 +1,13 @@
+Phoenix Admin Node
+Copyright (c) PhoenixWing contributors
+
+This repository is a PhoenixWing-maintained fork of Cool Admin Midway.
+It is not an official Cool Admin distribution.
+
+The original Cool Admin copyright and MIT license notice are preserved in
+LICENSE and in the Git history. Phoenix changes in this repository are also
+distributed under the MIT License.
+
+Fixed upstream baseline:
+cool-team-official/cool-admin-midway 8.x
+e545ef6f3b0c08581e34bd3207ca57d851ccc3ae

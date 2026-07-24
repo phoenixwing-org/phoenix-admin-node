@@ -19,12 +19,12 @@ export default ({ app }) => {
     base: {
       openapi: '3.1.0',
       info: {
-        title: 'Cool Admin 在线API文档',
+        title: 'Phoenix Admin Node 在线 API 文档',
         version: '8.x',
-        description: '本文档是由Cool Admin内部自动构建完成',
+        description: 'Phoenix Admin Node 自动生成的 API 文档',
         contact: {
-          name: '开发文档',
-          url: 'https://cool-js.com',
+          name: 'PhoenixWing',
+          url: 'https://gitee.com/phoenixwing/phoenix-admin-node',
         },
       },
       // 请求地址
