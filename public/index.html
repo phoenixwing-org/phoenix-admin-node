@@ -1,31 +1,48 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
-
 <head>
 	<meta charset="UTF-8" />
 	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-	<meta http-equiv="X-UA-Compatible" content="ie=edge" />
 	<title>Phoenix Admin Node</title>
 	<meta name="keywords" content="Phoenix Admin，后台管理系统，Vue，Element Plus，Midway，PostgreSQL" />
 	<meta name="description" content="Phoenix Admin Host 后端服务，提供统一身份、组织、权限、菜单与审计基础能力。" />
-	<link rel="stylesheet" href="css/welcome.css">
-    <link rel="shortcut icon" href="favicon.ico" type="image/x-icon" />
-
+	<link rel="stylesheet" href="css/welcome.css" />
+	<link rel="shortcut icon" href="favicon.ico" type="image/x-icon" />
+</head>
 <body>
-<div class="reveal">HELLO PHOENIX ADMIN HOST</div>
+	<main class="pah-welcome">
+		<header class="pah-brand">
+			<img src="pah-phoenixwing-mark.svg" alt="" />
+			<div>
+				<strong>Phoenix Admin</strong>
+				<span>HOST SERVICE</span>
+			</div>
+		</header>
 
-<!-- 添加底部说明 -->
-<div class="footer-bar">
-	<span>当前版本：8.0.0-phoenix.0（基于 Cool Admin 8.x）</span>
-	<div class="notice">
-		<span>Phoenix Admin Host 后端服务已运行。</span>
-		<span>前端工作台：</span>
-		<a class="link" target="_blank" href="http://localhost:9000/">打开 Phoenix Admin Vue</a>
-		<span> · PhoenixWing 维护的 Cool Admin 8.x MIT 分叉</span>
-	</div>
-</div>
+		<section class="pah-service-card" aria-labelledby="service-title">
+			<p class="pah-status"><span aria-hidden="true"></span> SERVICE ONLINE</p>
+			<h1 id="service-title">Phoenix Admin Node</h1>
+			<p class="pah-intro">
+				统一身份、组织、权限、菜单与审计服务已经启动，可以进入 Phoenix Admin Host 工作台。
+			</p>
 
-<script src="js/welcome.js"></script>
+			<a class="pah-primary-action" href="http://localhost:9000/">
+				<span>打开 Phoenix Admin Vue</span>
+				<strong aria-hidden="true">→</strong>
+			</a>
+
+			<dl class="pah-runtime">
+				<div><dt>API PORT</dt><dd>8101</dd></div>
+				<div><dt>DATABASE</dt><dd>PostgreSQL</dd></div>
+				<div><dt>VERSION</dt><dd>8.0.0-phoenix.0</dd></div>
+			</dl>
+		</section>
+
+		<footer>
+			<span>PHOENIXWING MAINTAINED FORK</span>
+			<span class="pah-footer-line"></span>
+			<span>BASED ON COOL ADMIN 8.x · MIT</span>
+		</footer>
+	</main>
 </body>
-
 </html>
