@@ -1,7 +1,4 @@
-import {
-  CoolController,
-  BaseController,
-} from '@cool-midway/core';
+import { CoolController, BaseController } from '@cool-midway/core';
 import { PluginInfoEntity } from '../../entity/info';
 import { Fields, Files, Inject, Post } from '@midwayjs/core';
 import { PluginService } from '../../service/info';

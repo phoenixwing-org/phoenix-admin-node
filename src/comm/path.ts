@@ -11,7 +11,7 @@ const getKeys = () => {
   const configFile = path.join(__dirname, '../config/config.default.js');
   const configContent = fs.readFileSync(configFile, 'utf8');
   const keys = configContent.match(/keys: '([^']+)'/)?.[1];
-  return keys;
+  return process.env.PAH_APP_KEYS || keys || 'phoenix-admin-local-keys';
 };
 
 /**

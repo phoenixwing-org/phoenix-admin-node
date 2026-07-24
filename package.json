@@ -1,7 +1,8 @@
 {
-  "name": "cool-admin",
-  "version": "8.0.0",
-  "description": "一个很酷的Ai快速开发框架",
+  "name": "phoenix-admin-node",
+  "version": "8.0.0-phoenix.0",
+  "packageManager": "pnpm@10.15.1",
+  "description": "Phoenix Admin Host Node.js backend maintained from Cool Admin Midway 8.x",
   "private": true,
   "dependencies": {
     "@cool-midway/core": "^8.0.7",
@@ -28,6 +29,7 @@
     "md5": "^2.3.0",
     "moment": "^2.30.1",
     "mysql2": "^3.14.0",
+    "pg": "^8.22.0",
     "svg-captcha": "^1.4.0",
     "tslib": "^2.8.1",
     "typeorm": "npm:@cool-midway/typeorm@0.3.20",
@@ -55,6 +57,8 @@
     "start": "NODE_ENV=production node ./bootstrap.js",
     "dev": "rimraf src/index.ts && cool check && cross-env NODE_ENV=local mwtsc --cleanOutDir --watch --run @midwayjs/mock/app.js --keepalive",
     "test": "cross-env NODE_ENV=unittest jest",
+    "test:ci": "cross-env NODE_ENV=unittest jest --runInBand --passWithNoTests",
+    "verify": "pnpm run lint && pnpm run test:ci && pnpm run build",
     "cov": "jest --coverage",
     "lint": "mwts check",
     "lint:fix": "mwts fix",
@@ -62,8 +66,8 @@
     "build": "cool entity && bundle && mwtsc --cleanOutDir",
     "build:obfuscate": "cool entity && bundle && mwtsc --cleanOutDir && cool obfuscate",
     "pkg": "rimraf build && mkdir build && npm run build && pkg . -d > build/pkg.log",
-    "pm2:start": "pm2 start ./bootstrap.js -i 1 --name cool-admin",
-    "pm2:stop": "pm2 stop cool-admin & pm2 delete cool-admin"
+    "pm2:start": "pm2 start ./bootstrap.js -i 1 --name phoenix-admin-node",
+    "pm2:stop": "pm2 stop phoenix-admin-node & pm2 delete phoenix-admin-node"
   },
   "bin": "./bootstrap.js",
   "pkg": {
@@ -83,8 +87,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://cool-js.com"
+    "url": "https://gitee.com/phoenixwing/phoenix-admin-node.git"
   },
   "author": "COOL",
+  "maintainers": [
+    "PhoenixWing contributors"
+  ],
   "license": "MIT"
 }

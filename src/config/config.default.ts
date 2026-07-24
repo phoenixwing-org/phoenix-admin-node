@@ -10,9 +10,9 @@ import { availablePort } from '../comm/port';
 
 export default {
   // 确保每个项目唯一，项目首次启动会自动生成
-  keys: 'cool-admin-keys-xxxxxx',
+  keys: process.env.PAH_APP_KEYS || 'phoenix-admin-local-keys',
   koa: {
-    port: availablePort(8001),
+    port: availablePort(Number(process.env.PAH_SERVER_PORT || 8101)),
   },
   // 开启异步上下文管理
   asyncContextManager: {
