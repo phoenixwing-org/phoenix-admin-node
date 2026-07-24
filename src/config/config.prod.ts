@@ -10,18 +10,16 @@ export default {
   typeorm: {
     dataSource: {
       default: {
-        type: 'mysql',
-        host: '127.0.0.1',
-        port: 3306,
-        username: 'root',
-        password: '123456',
-        database: 'cool',
+        type: 'postgres',
+        host: process.env.PAH_DB_HOST || '127.0.0.1',
+        port: Number(process.env.PAH_DB_PORT || 5432),
+        username: process.env.PAH_DB_USERNAME || 'postgres',
+        password: process.env.PAH_DB_PASSWORD || '',
+        database: process.env.PAH_DB_DATABASE || 'phoenix_admin',
         // 自动建表 注意：线上部署的时候不要使用，有可能导致数据丢失
         synchronize: false,
         // 打印日志
         logging: false,
-        // 字符集
-        charset: 'utf8mb4',
         // 是否开启缓存
         cache: true,
         // 实体路径

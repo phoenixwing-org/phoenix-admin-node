@@ -32,12 +32,24 @@ Phoenix Admin Host 的 Node.js 后端宿主。仓库以 Cool Admin Midway `8.x` 
 
 ## 本地开发
 
-要求 Node.js 18 或更高版本。先根据本地环境修改 `src/config/config.local.ts` 的数据库配置，再运行：
+要求 Node.js 18 或更高版本。本地开发默认使用 PostgreSQL `127.0.0.1:5432`，数据库名
+`phoenix_admin`，账号默认取当前系统用户。首次运行先创建数据库：
+
+```shell
+createdb phoenix_admin
+```
+
+需要覆盖连接信息时使用 `PAH_DB_HOST`、`PAH_DB_PORT`、`PAH_DB_USERNAME`、
+`PAH_DB_PASSWORD`、`PAH_DB_DATABASE`；后端端口默认 `8101`，可用 `PAH_SERVER_PORT`
+覆盖。生产部署还必须设置 `PAH_APP_KEYS`、`PAH_ADMIN_JWT_SECRET` 和
+`PAH_APP_JWT_SECRET`。启动：
 
 ```shell
 pnpm install
 pnpm dev
 ```
+
+后端欢迎页为 <http://localhost:8101/>，前端工作台默认位于 <http://localhost:9000/>。
 
 构建与测试：
 

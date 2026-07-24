@@ -27,7 +27,8 @@ export default () => {
       // 单点登录
       sso: false,
       // 注意： 最好重新修改，防止破解
-      secret: 'cool-admin-xxxxxx',
+      secret:
+        process.env.PAH_ADMIN_JWT_SECRET || 'phoenix-admin-local-jwt-secret',
       // token
       token: {
         // 2小时过期，需要用刷新token
