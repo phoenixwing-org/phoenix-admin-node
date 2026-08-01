@@ -20,7 +20,7 @@ export default ({ app }) => {
       openapi: '3.1.0',
       info: {
         title: 'Phoenix Admin Node 在线 API 文档',
-        version: '8.x',
+        version: '0.1.0',
         description: 'Phoenix Admin Node 自动生成的 API 文档',
         contact: {
           name: 'PhoenixWing',

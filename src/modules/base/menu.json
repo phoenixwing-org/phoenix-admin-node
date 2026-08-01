@@ -733,7 +733,7 @@
         "orderNum": 11,
         "viewPath": null,
         "keepAlive": true,
-        "isShow": true,
+        "isShow": false,
         "childMenus": [
             {
                 "name": "用户列表",
