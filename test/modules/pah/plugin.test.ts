@@ -47,6 +47,7 @@ function manifest(): PahPluginManifest {
         id: 'example-plugin-items',
         path: '/example-plugin/items',
         title: '示例列表',
+        icon: 'pnw:list',
         moduleId: 'example-plugin-workbench',
         capability: 'example-plugin:item:read',
         viewPath: 'modules/example-plugin/views/items.vue',
@@ -59,6 +60,7 @@ function manifest(): PahPluginManifest {
         {
           id: 'example-plugin-workbench',
           label: '示例工作台',
+          icon: 'pnw:folder',
           routeIds: ['example-plugin-items'],
         },
       ],
@@ -182,6 +184,23 @@ describe('Pah 插件契约', () => {
     expect(validatePahPluginManifest(input).errors).toContain(
       'routePrefix 必须是单段安全路径：/example/admin'
     );
+  });
+
+  it('只允许 manifest 持久化显式命名空间图标 ID', () => {
+    const input = manifest();
+    input.routes[0].icon = 'document';
+    input.navigation.modules[0].icon = 'folder-opened';
+
+    expect(validatePahPluginManifest(input).errors).toEqual(
+      expect.arrayContaining([
+        '路由图标必须使用显式命名空间：document',
+        '导航模块图标必须使用显式命名空间：folder-opened',
+      ])
+    );
+
+    input.routes[0].icon = 'vendor:issue.list';
+    input.navigation.modules[0].icon = 'cool:folder';
+    expect(validatePahPluginManifest(input)).toEqual({ valid: true, errors: [] });
   });
 
   it('拒绝默认清除业务数据', () => {
@@ -406,10 +425,15 @@ describe('Pah 菜单、角色与迁移台账', () => {
     await service.enable(MODULE_ID);
 
     expect(baseMenuSave).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ icon: 'pnw:folder' })
+    );
+    expect(baseMenuSave).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
         router: '/example-plugin/items',
         perms: 'example-plugin:item:read',
+        icon: 'pnw:list',
       })
     );
     expect(roleMenuSave).toHaveBeenCalledWith({ roleId: 4, menuId: 202 });

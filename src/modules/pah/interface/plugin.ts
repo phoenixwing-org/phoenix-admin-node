@@ -49,6 +49,8 @@ export interface PahPluginManifest {
     id: string;
     path: string;
     title: string;
+    /** 可序列化图标 ID；新数据必须使用 pnw:* / cool:* 等显式命名空间。 */
+    icon?: string;
     moduleId: string;
     capability: string;
     /** 编译期接入 Host 的前端视图；生产安装不执行上传源码。 */
@@ -62,6 +64,8 @@ export interface PahPluginManifest {
     modules: Array<{
       id: string;
       label: string;
+      /** 可序列化图标 ID；省略时使用 pnw:folder。 */
+      icon?: string;
       routeIds: string[];
     }>;
   };
@@ -132,6 +136,16 @@ function duplicates(values: string[]) {
 
 function isText(value: unknown): value is string {
   return typeof value === 'string';
+}
+
+const PAH_ICON_ID_PATTERN = /^[a-z][a-z0-9-]*:[a-z0-9][a-z0-9._-]*$/;
+
+/**
+ * 插件 manifest 只能保存显式命名空间图标 ID。
+ * 裸字符串属于旧运行时兼容输入，不能进入新的持久化契约。
+ */
+export function isPahIconId(value: unknown): value is string {
+  return isText(value) && PAH_ICON_ID_PATTERN.test(value);
 }
 
 function isSafeEntrypoint(value: unknown) {
@@ -233,6 +247,9 @@ export function validatePahPluginManifest(
     if (route.isShow !== undefined && typeof route.isShow !== 'boolean') {
       errors.push(`路由显示标识必须为布尔值：${String(route.id ?? '')}`);
     }
+    if (route.icon !== undefined && !isPahIconId(route.icon)) {
+      errors.push(`路由图标必须使用显式命名空间：${String(route.icon)}`);
+    }
   }
   for (const duplicate of duplicates(
     routes.map(route => route?.id).filter(isText)
@@ -258,6 +275,9 @@ export function validatePahPluginManifest(
     }
     if (!isText(module.id) || !module.id.startsWith(`${moduleId}-`)) {
       errors.push(`导航模块 ID 越界：${String(module.id ?? '')}`);
+    }
+    if (module.icon !== undefined && !isPahIconId(module.icon)) {
+      errors.push(`导航模块图标必须使用显式命名空间：${String(module.icon)}`);
     }
     if (!Array.isArray(module.routeIds)) {
       errors.push(`导航模块缺少 routeIds：${String(module.id ?? '')}`);
