@@ -11,6 +11,10 @@ import { PahPluginMenuContributionEntity } from '../entity/menu-contribution';
 import { PahPluginInstallationEntity } from '../entity/plugin';
 import { PahPluginRoleGrantEntity } from '../entity/role-grant';
 import { PahPluginMigrationRecordEntity } from '../entity/migration-record';
+import {
+  PahMigrationBackupProof,
+  PahPluginMigrationService,
+} from './migration';
 import { PahNavigationService } from './navigation';
 import {
   canTransitionPahPlugin,
@@ -55,6 +59,9 @@ export class PahPluginService extends BaseService {
   @Inject()
   pahNavigationService: PahNavigationService;
 
+  @Inject()
+  pahPluginMigrationService: PahPluginMigrationService;
+
   async register(manifest: PahPluginManifest) {
     this.requireHostAdmin();
     const validation = validatePahPluginManifest(manifest);
@@ -76,9 +83,9 @@ export class PahPluginService extends BaseService {
         );
       }
 
-      const restartLifecycle = ['uninstalled', 'failed', 'rejected'].includes(
-        existing.state
-      );
+      const restartLifecycle =
+        existing.version !== manifest.version ||
+        ['uninstalled', 'failed', 'rejected'].includes(existing.state);
       await this.pluginInstallationEntity.update(existing.id, {
         name: manifest.name,
         version: manifest.version,
@@ -111,12 +118,34 @@ export class PahPluginService extends BaseService {
 
   async install(moduleId: string) {
     this.requireHostAdmin();
-    let info = await this.getRequired(moduleId);
-    this.requireTransition(info, 'staged');
-    for (const state of ['staged', 'migrated', 'installed'] as const) {
-      info = await this.transition(info, state);
+    const info = await this.getRequired(moduleId);
+    if (info.manifest.migrations.length > 0) {
+      throw new CoolCommException(
+        '包含 DDL 的插件必须经受控发布流程 dry-run、备份并安装'
+      );
     }
-    return info;
+    const plan = await this.pahPluginMigrationService.dryRun(info);
+    return this.installPrepared(info, plan.planId);
+  }
+
+  async migrationPlan(moduleId: string) {
+    this.requireHostAdmin();
+    return this.pahPluginMigrationService.dryRun(
+      await this.getRequired(moduleId)
+    );
+  }
+
+  /** 仅供编译期发布编排调用；控制器不接收备份证明或制品路径。 */
+  async installCompiled(
+    moduleId: string,
+    planId: string,
+    backupProof: PahMigrationBackupProof
+  ) {
+    return this.installPrepared(
+      await this.getRequired(moduleId),
+      planId,
+      backupProof
+    );
   }
 
   async enable(moduleId: string) {
@@ -188,71 +217,45 @@ export class PahPluginService extends BaseService {
     });
   }
 
-  /** 由编译期业务模块在实际数据迁移成功后写入 Host 台账。 */
-  async recordMigrationApplied(
-    moduleId: string,
-    migrationId: string,
-    importBatchId: string,
-    detail: unknown
-  ) {
-    const info = await this.getRequired(moduleId);
-    const declaration = info.manifest.migrations.find(
-      item => item.id === migrationId
-    );
-    if (!declaration)
-      throw new CoolCommException(`未声明的插件迁移：${migrationId}`);
-    if (!importBatchId?.trim())
-      throw new CoolCommException('迁移台账必须关联导入批次');
-    const existing = await this.pluginMigrationRecordEntity.findOne({
-      where: {
-        moduleId: Equal(moduleId),
-        migrationId: Equal(migrationId),
-        importBatchId: Equal(importBatchId),
-      },
-    });
-    const now = stateTime();
-    if (existing) {
-      await this.pluginMigrationRecordEntity.update(existing.id, {
-        state: 'applied',
-        detail: JSON.stringify(detail),
-        appliedAt: now,
-        rolledBackAt: null,
-      });
-    } else {
-      await this.pluginMigrationRecordEntity.save({
-        moduleId,
-        migrationId,
-        version: declaration.version,
-        checksum: declaration.checksum,
-        importBatchId,
-        state: 'applied',
-        detail: JSON.stringify(detail),
-        appliedAt: now,
-        rolledBackAt: null,
-      });
-    }
-    return this.migrationRecords(moduleId);
-  }
-
-  async recordMigrationRollback(moduleId: string, importBatchId: string) {
-    await this.getRequired(moduleId);
-    if (!importBatchId?.trim())
-      throw new CoolCommException('回滚必须关联导入批次');
-    await this.pluginMigrationRecordEntity.update(
-      {
-        moduleId: Equal(moduleId),
-        importBatchId: Equal(importBatchId),
-        state: Equal('applied'),
-      },
-      { state: 'rolled-back', rolledBackAt: stateTime() }
-    );
-    return this.migrationRecords(moduleId);
-  }
-
   private async getRequired(moduleId: string) {
     const info = await this.getByModuleId(moduleId);
     if (!info) throw new CoolCommException(`插件 ${moduleId} 尚未登记`);
     return info;
+  }
+
+  private async installPrepared(
+    info: PahPluginInstallationEntity,
+    planId: string,
+    backupProof?: PahMigrationBackupProof
+  ) {
+    this.requireTransition(info, 'staged');
+    const prepared = this.pahPluginMigrationService.claimPlan(
+      info.moduleId,
+      info.version,
+      planId
+    );
+    const staged = await this.transition(info, 'staged');
+    try {
+      return await this.pahPluginMigrationService.executeClaimed(
+        info.moduleId,
+        prepared,
+        backupProof
+      );
+    } catch (error) {
+      await this.markInstallationFailed(staged, error);
+      throw error;
+    }
+  }
+
+  private async markInstallationFailed(
+    info: PahPluginInstallationEntity,
+    error: unknown
+  ) {
+    const current = await this.getRequired(info.moduleId);
+    if (!canTransitionPahPlugin(current.state, 'failed')) return;
+    await this.transition(current, 'failed', {
+      lastError: error instanceof Error ? error.message : String(error),
+    });
   }
 
   /**
@@ -462,7 +465,7 @@ export class PahPluginService extends BaseService {
         ...patch,
         state: target,
         stateChangedAt: stateTime(),
-        lastError: null,
+        lastError: patch.lastError === undefined ? null : patch.lastError,
       }
     );
     if (result.affected !== 1) {

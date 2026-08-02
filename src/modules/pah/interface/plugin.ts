@@ -1,4 +1,4 @@
-export const PAH_PLUGIN_FORMAT_VERSION = 1 as const;
+export const PAH_PLUGIN_FORMAT_VERSION = 2 as const;
 
 export const PAH_HOST_REUSE_CAPABILITIES = [
   'identity',
@@ -28,6 +28,19 @@ export type PahPluginLifecycleState =
   | 'uninstalled'
   | 'rejected'
   | 'failed';
+
+export interface PahPluginMigrationDeclaration {
+  id: string;
+  version: number;
+  checksum: string;
+  description: string;
+  artifact: {
+    /** 首版只接受受控构建随包发布的 SQL，不动态加载 Migration 类。 */
+    format: 'sql';
+    /** 相对编译期插件根目录，固定放在 migrations/ 下。 */
+    path: string;
+  };
+}
 
 export interface PahPluginManifest {
   formatVersion: number;
@@ -77,12 +90,7 @@ export interface PahPluginManifest {
   }>;
   resourcePolicies: string[];
   auditCategories: Array<{ id: string; description: string }>;
-  migrations: Array<{
-    id: string;
-    version: number;
-    checksum: string;
-    description: string;
-  }>;
+  migrations: PahPluginMigrationDeclaration[];
   healthChecks: Array<{ id: string; path: string }>;
   hostReuse: PahHostReuseCapability[];
   dataOwnership: {
@@ -165,6 +173,17 @@ function isSafeViewPath(value: unknown, moduleId: string) {
     value.endsWith('.vue') &&
     !value.includes('..') &&
     !value.includes('\\')
+  );
+}
+
+function isSafeMigrationArtifactPath(value: unknown) {
+  if (!isText(value) || value.includes('\\')) return false;
+  const segments = value.split('/');
+  return (
+    segments.length >= 2 &&
+    segments[0] === 'migrations' &&
+    value.endsWith('.sql') &&
+    segments.every(segment => /^[a-z0-9][a-z0-9._-]*$/.test(segment))
   );
 }
 
@@ -332,12 +351,20 @@ export function validatePahPluginManifest(
     }
     if (
       !isText(migration.checksum) ||
-      !/^sha256:[a-f0-9]{32,128}$/.test(migration.checksum)
+      !/^sha256:[a-f0-9]{64}$/.test(migration.checksum)
     ) {
       errors.push(`迁移校验和格式错误：${String(migration.id ?? '')}`);
     }
     if (!isText(migration.description) || !migration.description.trim()) {
       errors.push(`缺少迁移说明：${String(migration.id ?? '')}`);
+    }
+    if (migration.artifact?.format !== 'sql') {
+      errors.push(`迁移制品格式不受支持：${String(migration.id ?? '')}`);
+    }
+    if (!isSafeMigrationArtifactPath(migration.artifact?.path)) {
+      errors.push(
+        `迁移制品路径不安全：${String(migration.artifact?.path ?? '')}`
+      );
     }
   }
   for (const duplicate of duplicates(
@@ -349,6 +376,11 @@ export function validatePahPluginManifest(
     migrations.map(item => String(item?.version ?? '')).filter(Boolean)
   )) {
     errors.push(`重复迁移版本：${duplicate}`);
+  }
+  for (const duplicate of duplicates(
+    migrations.map(item => item?.artifact?.path).filter(isText)
+  )) {
+    errors.push(`重复迁移制品路径：${duplicate}`);
   }
 
   const healthChecks = Array.isArray(input.healthChecks)

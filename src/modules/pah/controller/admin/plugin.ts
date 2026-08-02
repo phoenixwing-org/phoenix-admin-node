@@ -29,6 +29,11 @@ export class PahPluginController extends BaseController {
     return this.ok(await this.pahPluginService.install(moduleId));
   }
 
+  @Get('/migration-plan', { summary: '只读校验迁移制品与待执行计划' })
+  async migrationPlan(@Query('moduleId') moduleId: string) {
+    return this.ok(await this.pahPluginService.migrationPlan(moduleId));
+  }
+
   @Post('/enable', { summary: '启用插件贡献' })
   async enable(@Body('moduleId') moduleId: string) {
     return this.ok(await this.pahPluginService.enable(moduleId));

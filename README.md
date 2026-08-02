@@ -53,7 +53,8 @@ pnpm dev
 
 后端欢迎页为 <http://localhost:8101/>，前端工作台默认位于 <http://localhost:9000/>。
 本地业务插件管理页为 <http://localhost:9000/pah/plugins>，原型边界与接口见
-[PahPLUGIN.md](docs/PahPLUGIN.md)。
+[PahPLUGIN.md](docs/PahPLUGIN.md)，生产 DDL、dry-run、台账和恢复门禁见
+[PahMIGRATIONS.md](docs/PahMIGRATIONS.md)。
 
 构建与测试：
 

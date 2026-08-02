@@ -4,14 +4,14 @@
 
 Phoenix Admin Host 已建立独立于 Cool `.cool` Hook 插件的业务插件注册表。它面向同时包含前端、后端、路由、权限、数据和任务贡献的业务模块，用于验证通用宿主契约。
 
-首版只处理 manifest 与生命周期状态，不读取或执行 manifest 的入口文件，不使用 `eval`，也不表示已经支持生产在线安装。插件入口统一声明为 `restart`，真正加载必须经过后续受控构建或受控重启流程。
+首版不读取或执行 manifest 的入口文件，不使用 `eval`，也不支持生产在线上传。插件入口统一声明为 `restart`，真正加载必须经过受控构建和受控重启流程。manifest format v2 的数据库迁移只接受编译期插件随包发布的受控 SQL，完整门禁见 [PahMIGRATIONS.md](PahMIGRATIONS.md)。
 
 ## 持久化与接口
 
 - 安装记录表：`pah_plugin_installation`。
 - 控制器前缀：`/admin/pah/plugin`。
 - 查询：`list`、`page`、`info`、`enabled`。
-- 操作：`register`、`install`、`enable`、`disable`、`uninstall`。
+- 操作：`register`、`migration-plan`、`install`、`enable`、`disable`、`uninstall`。
 
 生命周期为：
 
@@ -21,7 +21,7 @@ uploaded → verified → staged → migrated → installed → enabled
                                             disabled → uninstalled
 ```
 
-本地原型从已验证 manifest 开始登记；`install` 顺序经过 `staged`、`migrated`、`installed`，不允许跳步。启用状态不能直接卸载，必须先停用。
+本地原型从已验证 manifest 开始登记。无 DDL 的插件可由普通 `install` 完成安装；包含 DDL 的插件必须先 dry-run 和可信备份，再由不暴露给 HTTP 的编译期发布编排依次完成 `staged`、`migrated`、`installed`。启用状态不能直接卸载，必须先停用。
 
 ## 安全边界
 
@@ -39,13 +39,15 @@ uploaded → verified → staged → migrated → installed → enabled
 - Host 内置“管理”“开发”“业务”三个导航大分组。插件建议组不存在时，导航模块回退到稳定键 `pah-group-business`。
 - 启用插件时，Host 把导航模块、页面和能力码物化为系统菜单，并记录稳定贡献键。
 - 停用前按稳定贡献键保存角色授权，删除插件菜单并刷新权限缓存；再次启用时恢复授权。
-- manifest 只声明迁移；实际执行成功后由编译期业务模块写入 `pah_plugin_migration_record`，并以导入批次记录应用或回滚状态。
+- manifest 声明有序 SQL 制品；Host 执行器校验 checksum，在同一数据库事务内执行待办 DDL 并写入 `pah_plugin_migration_record`。客户端不能提交批次或伪造 `applied`。
+- 开发 `synchronize`、fixture、seed/reset 与生产 migration 严格分离；生产执行必须具备 dry-run、可信备份及已演练恢复路径。
 
 ## 本地验收
 
 1. 启动 PostgreSQL 和 `phoenix-admin-node`，本地配置会用 TypeORM `synchronize` 创建注册表。
 2. 启动 `phoenix-admin-vue`，访问 <http://localhost:9000/pah/plugins>。
-3. 依次执行登记、安装、启用、停用、卸载。
-4. 验证最终状态为 `uninstalled`、`dataRetained=true`，页面列出保留表和备份标识。
+3. 对包含 DDL 的插件先查看只读迁移计划；本地验证不得把 `synchronize` 自动建表当成 applied migration。
+4. 无 DDL 插件可依次执行登记、安装、启用、停用、卸载；DDL 插件使用受控发布编排。
+5. 验证最终状态为 `uninstalled`、`dataRetained=true`，页面列出保留表和备份标识。
 
-生产环境禁用 `synchronize`，后续进入生产试用前必须补正式数据库迁移、签名包校验、原子升级/回滚和入口物理隔离。
+生产环境禁用 `synchronize`。进入生产试用前还必须为具体插件完成签名包校验、备份恢复演练、权限/数据核对和入口物理隔离；通用 Host 契约通过不能替代插件自己的生产验收。
