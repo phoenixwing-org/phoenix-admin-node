@@ -16,8 +16,10 @@ import {
   PahPluginMigrationService,
 } from './migration';
 import { PahNavigationService } from './navigation';
+import { PahDictionaryService } from './dictionary';
 import {
   canTransitionPahPlugin,
+  pahCapabilityPermissionTokens,
   PahPluginLifecycleState,
   PahPluginManifest,
   validatePahPluginManifest,
@@ -61,6 +63,9 @@ export class PahPluginService extends BaseService {
 
   @Inject()
   pahPluginMigrationService: PahPluginMigrationService;
+
+  @Inject()
+  pahDictionaryService: PahDictionaryService;
 
   async register(manifest: PahPluginManifest) {
     this.requireHostAdmin();
@@ -148,13 +153,32 @@ export class PahPluginService extends BaseService {
     );
   }
 
-  async enable(moduleId: string) {
+  async enable(
+    moduleId: string,
+    dictionaryFingerprint?: string,
+    dictionaryConfirmed?: boolean
+  ) {
     this.requireHostAdmin();
     const info = await this.getRequired(moduleId);
     this.requireTransition(info, 'enabled');
+    const hasDictionaryContributions = Boolean(
+      info.manifest.dictionaryContributions?.length
+    );
+    if (hasDictionaryContributions && !dictionaryConfirmed) {
+      throw new CoolCommException('启用前必须确认当前字典 dry-run 计划');
+    }
+    const dictionaryReconcile = hasDictionaryContributions
+      ? await this.pahDictionaryService.reconcile(
+          info,
+          dictionaryFingerprint ?? ''
+        )
+      : null;
     await this.applyNavigationContributions(info);
     try {
-      return await this.transition(info, 'enabled');
+      return {
+        ...(await this.transition(info, 'enabled')),
+        dictionaryReconcile,
+      };
     } catch (error) {
       await this.removeNavigationContributions(moduleId, false);
       throw error;
@@ -217,6 +241,36 @@ export class PahPluginService extends BaseService {
     });
   }
 
+  async dictionaryPlan(moduleId: string) {
+    this.requireHostAdmin();
+    return this.pahDictionaryService.dryRun(await this.getRequired(moduleId));
+  }
+
+  async dictionaryRecords(moduleId: string, page: unknown, size: unknown) {
+    this.requireHostAdmin();
+    await this.getRequired(moduleId);
+    return this.pahDictionaryService.records(moduleId, page, size);
+  }
+
+  async dictionaryReconcile(
+    moduleId: string,
+    dictionaryFingerprint: string,
+    dictionaryConfirmed: boolean
+  ) {
+    this.requireHostAdmin();
+    if (!dictionaryConfirmed) {
+      throw new CoolCommException('执行字典补全前必须确认当前 dry-run 计划');
+    }
+    const info = await this.getRequired(moduleId);
+    if (info.state !== 'enabled') {
+      throw new CoolCommException('只有已启用插件可以独立补全字典');
+    }
+    if (!info.manifest.dictionaryContributions?.length) {
+      throw new CoolCommException('插件未声明产品字典');
+    }
+    return this.pahDictionaryService.reconcile(info, dictionaryFingerprint);
+  }
+
   private async getRequired(moduleId: string) {
     const info = await this.getByModuleId(moduleId);
     if (!info) throw new CoolCommException(`插件 ${moduleId} 尚未登记`);
@@ -269,6 +323,12 @@ export class PahPluginService extends BaseService {
 
     const { manifest } = info;
     const routes = new Map(manifest.routes.map(route => [route.id, route]));
+    const capabilityPermissions = new Map(
+      manifest.capabilities.map(capability => [
+        capability.id,
+        pahCapabilityPermissionTokens(capability).join(','),
+      ])
+    );
     const pageParents = new Map<string, number>();
     const moduleMenuIds = new Map<string, number>();
     let moduleOrder = 0;
@@ -292,12 +352,11 @@ export class PahPluginService extends BaseService {
         }
       );
       moduleMenuIds.set(module.id, moduleMenu.id);
-      // 管理员一旦把模块移动到其他大分组，稳定目标键上的配置会优先保留；
-      // 首次启用才采用 manifest 的建议分组。
-      await this.pahNavigationService.ensurePluginPreferredGroup(
+      // 首次启用统一进入“业务”；管理员移动后，稳定 targetKey 的配置
+      // 会跨升级、停用和再次启用保留，manifest 不覆盖该选择。
+      await this.pahNavigationService.ensurePluginDefaultGroup(
         info.moduleId,
-        module.id,
-        manifest.navigation.preferredGroupId
+        module.id
       );
 
       let routeOrder = 0;
@@ -312,7 +371,8 @@ export class PahPluginService extends BaseService {
             parentId: moduleMenu.id,
             name: route.title,
             router: route.path,
-            perms: route.capability,
+            perms:
+              capabilityPermissions.get(route.capability) ?? route.capability,
             type: 1,
             icon: route.icon || 'pnw:document',
             orderNum: routeOrder,
@@ -341,7 +401,7 @@ export class PahPluginService extends BaseService {
           parentId,
           name: capability.description,
           router: null,
-          perms: capability.id,
+          perms: pahCapabilityPermissionTokens(capability).join(','),
           type: 2,
           icon: null,
           orderNum: capabilityOrder,

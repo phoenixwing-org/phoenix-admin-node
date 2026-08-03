@@ -1,10 +1,12 @@
 import { spawnSync } from 'child_process';
+import { createHash } from 'crypto';
 import {
   cpSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'fs';
 import { tmpdir } from 'os';
@@ -38,6 +40,7 @@ const MIGRATION_FIXTURE_ROOT = path.resolve(
 );
 const FIRST_MIGRATION_PATH = 'migrations/0001-create-items.sql';
 const SECOND_MIGRATION_PATH = 'migrations/0002-index-items.sql';
+const RUNTIME_ARTIFACT_PATH = 'runtime/example-runtime.cjs';
 const FIRST_MIGRATION_SQL = readFileSync(
   path.join(MIGRATION_FIXTURE_ROOT, FIRST_MIGRATION_PATH)
 );
@@ -409,14 +412,13 @@ describe('Pah 导航分组', () => {
     });
   });
 
-  it('插件建议组不存在时回退到业务分组', async () => {
+  function navigationService(existingAssignment: any = null) {
     const assignmentSave = jest.fn();
     const groupFindOne = jest
       .fn()
       .mockResolvedValueOnce({ id: 1 })
       .mockResolvedValueOnce({ id: 2 })
       .mockResolvedValueOnce({ id: 3 })
-      .mockResolvedValueOnce(null)
       .mockResolvedValueOnce({ id: 3 });
     const service = new PahNavigationService();
     Object.assign(service, {
@@ -425,23 +427,43 @@ describe('Pah 导航分组', () => {
         save: jest.fn(),
       },
       navigationAssignmentEntity: {
-        findOne: jest.fn().mockResolvedValue(null),
+        findOne: jest.fn().mockResolvedValue(existingAssignment),
         save: assignmentSave,
       },
       baseSysMenuEntity: { find: jest.fn().mockResolvedValue([]) },
       pluginInstallationEntity: { find: jest.fn().mockResolvedValue([]) },
     });
+    return { service, assignmentSave, groupFindOne };
+  }
 
-    await service.ensurePluginPreferredGroup(
+  it('插件首次目标始终进入业务分组且不消费 manifest 建议组', async () => {
+    const { service, assignmentSave, groupFindOne } = navigationService();
+
+    await service.ensurePluginDefaultGroup(
       MODULE_ID,
-      'example-plugin-workbench',
-      'pah-group-missing'
+      'example-plugin-workbench'
     );
 
     expect(assignmentSave).toHaveBeenCalledWith({
       targetKey: 'plugin:example-plugin:example-plugin-workbench',
       groupId: 3,
     });
+    expect(groupFindOne).toHaveBeenCalledTimes(4);
+  });
+
+  it('插件升级或重新启用不覆盖管理员已有分配', async () => {
+    const { service, assignmentSave, groupFindOne } = navigationService({
+      id: 8,
+      groupId: 99,
+    });
+
+    await service.ensurePluginDefaultGroup(
+      MODULE_ID,
+      'example-plugin-workbench'
+    );
+
+    expect(assignmentSave).not.toHaveBeenCalled();
+    expect(groupFindOne).toHaveBeenCalledTimes(3);
   });
 });
 
@@ -503,7 +525,7 @@ describe('Pah 菜单与角色贡献', () => {
     let menuId = 200;
     const baseMenuSave = jest.fn(async data => ({ ...data, id: ++menuId }));
     const roleMenuSave = jest.fn();
-    const ensurePluginPreferredGroup = jest.fn();
+    const ensurePluginDefaultGroup = jest.fn();
     const installationFindOne = jest
       .fn()
       .mockResolvedValueOnce({
@@ -546,7 +568,7 @@ describe('Pah 菜单与角色贡献', () => {
         find: jest.fn().mockResolvedValue([{ userId: 9, roleId: 4 }]),
       },
       baseSysPermsService: { refreshPerms: jest.fn() },
-      pahNavigationService: { ensurePluginPreferredGroup },
+      pahNavigationService: { ensurePluginDefaultGroup },
     });
 
     await service.enable(MODULE_ID);
@@ -564,10 +586,9 @@ describe('Pah 菜单与角色贡献', () => {
       })
     );
     expect(roleMenuSave).toHaveBeenCalledWith({ roleId: 4, menuId: 202 });
-    expect(ensurePluginPreferredGroup).toHaveBeenCalledWith(
+    expect(ensurePluginDefaultGroup).toHaveBeenCalledWith(
       MODULE_ID,
-      'example-plugin-workbench',
-      PAH_BUSINESS_NAVIGATION_GROUP_KEY
+      'example-plugin-workbench'
     );
   });
 });
@@ -642,6 +663,13 @@ describe('Pah 通用 SQL 迁移执行器', () => {
           path.join(tempRoot, 'dist/modules', MODULE_ID, FIRST_MIGRATION_PATH)
         )
       ).toEqual(FIRST_MIGRATION_SQL);
+      expect(
+        readFileSync(
+          path.join(tempRoot, 'dist/modules', MODULE_ID, RUNTIME_ARTIFACT_PATH)
+        )
+      ).toEqual(
+        readFileSync(path.join(MIGRATION_FIXTURE_ROOT, RUNTIME_ARTIFACT_PATH))
+      );
 
       rmSync(path.join(sourceRoot, 'pah-plugin.artifacts.json'));
       const missingDescriptor = spawnSync(process.execPath, [assembler], {
@@ -655,6 +683,117 @@ describe('Pah 通用 SQL 迁移执行器', () => {
     } finally {
       rmSync(tempRoot, { recursive: true, force: true });
     }
+  });
+
+  it('构建装配器拒绝不可信 runtimeArtifacts，且不解析 Host ambient 依赖', () => {
+    const assembler = path.resolve(
+      __dirname,
+      '../../../scripts/copy-pah-plugin-artifacts.mjs'
+    );
+    const runInvalidCase = (
+      mutate: (context: {
+        tempRoot: string;
+        sourceRoot: string;
+        descriptor: Record<string, any>;
+        artifact: Record<string, any>;
+        artifactPath: string;
+      }) => void,
+      expectedError: string
+    ) => {
+      const tempRoot = mkdtempSync(path.join(tmpdir(), 'pah-runtime-invalid-'));
+      const sourceRoot = path.join(tempRoot, 'src/modules', MODULE_ID);
+      mkdirSync(path.dirname(sourceRoot), { recursive: true });
+      cpSync(MIGRATION_FIXTURE_ROOT, sourceRoot, { recursive: true });
+      const descriptorPath = path.join(
+        sourceRoot,
+        'pah-plugin.artifacts.json'
+      );
+      const descriptor = JSON.parse(readFileSync(descriptorPath, 'utf8'));
+      const artifact = descriptor.runtimeArtifacts[0];
+      const artifactPath = path.join(sourceRoot, RUNTIME_ARTIFACT_PATH);
+      try {
+        mutate({
+          tempRoot,
+          sourceRoot,
+          descriptor,
+          artifact,
+          artifactPath,
+        });
+        writeFileSync(
+          descriptorPath,
+          `${JSON.stringify(descriptor, null, 2)}\n`
+        );
+        const result = spawnSync(process.execPath, [assembler], {
+          cwd: tempRoot,
+          encoding: 'utf8',
+        });
+        expect(result.status).not.toBe(0);
+        expect(result.stderr).toContain(expectedError);
+      } finally {
+        rmSync(tempRoot, { recursive: true, force: true });
+      }
+    };
+    const replaceArtifact = (
+      context: {
+        artifact: Record<string, any>;
+        artifactPath: string;
+      },
+      content: string
+    ) => {
+      writeFileSync(context.artifactPath, content);
+      const bytes = Buffer.from(content);
+      context.artifact.size = bytes.byteLength;
+      context.artifact.sha256 = createHash('sha256')
+        .update(bytes)
+        .digest('hex');
+    };
+
+    runInvalidCase(
+      ({ artifactPath }) => rmSync(artifactPath),
+      '文件不存在'
+    );
+    runInvalidCase(({ artifact }) => {
+      artifact.size += 1;
+    }, 'size 不匹配');
+    runInvalidCase(({ artifact }) => {
+      artifact.sha256 = '0'.repeat(64);
+    }, 'sha256 不匹配');
+    runInvalidCase(({ artifact }) => {
+      artifact.path = '/tmp/runtime.cjs';
+    }, 'path 必须是安全的 POSIX 相对路径');
+    runInvalidCase(({ artifact }) => {
+      artifact.path = '../runtime.cjs';
+    }, 'path 不合法或会覆盖受保护制品');
+    runInvalidCase(({ artifact }) => {
+      artifact.runtime = 'browser';
+    }, '只允许 node/commonjs');
+    runInvalidCase(({ artifact }) => {
+      artifact.format = 'module';
+    }, '只允许 node/commonjs');
+    runInvalidCase(({ artifact }) => {
+      artifact.postinstall = 'node install.js';
+    }, '只能声明固定字段');
+    runInvalidCase(context => {
+      const outside = path.join(context.tempRoot, 'outside-runtime.cjs');
+      writeFileSync(outside, readFileSync(context.artifactPath));
+      rmSync(context.artifactPath);
+      symlinkSync(outside, context.artifactPath);
+    }, 'path 不得包含 symlink');
+    runInvalidCase(({ sourceRoot }) => {
+      writeFileSync(
+        path.join(sourceRoot, 'runtime/undeclared-runtime.cjs'),
+        'module.exports = {};\n'
+      );
+    }, '包含未声明的 runtime 文件 runtime/undeclared-runtime.cjs');
+    runInvalidCase(context => {
+      replaceArtifact(context, "module.exports = require('left-pad');\n");
+    }, '引用了未声明的运行时依赖 left-pad');
+    runInvalidCase(context => {
+      replaceArtifact(context, "module.exports = require('./other.cjs');\n");
+    }, '引用了未声明的运行时依赖 ./other.cjs');
+    runInvalidCase(context => {
+      replaceArtifact(context, 'module.exports = require(process.env.RUNTIME);\n');
+    }, '不得使用动态 require');
   });
 
   it('按通用 descriptor 自动装配，不要求插件导入 Host 源码', async () => {

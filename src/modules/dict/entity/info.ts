@@ -1,10 +1,11 @@
 import { BaseEntity } from '../../base/entity/base';
-import { Column, Entity } from 'typeorm';
+import { Column, Entity, Index } from 'typeorm';
 
 /**
  * 字典信息
  */
 @Entity('dict_info')
+@Index(['typeId', 'value'], { unique: true })
 export class DictInfoEntity extends BaseEntity {
   @Column({ comment: '类型ID' })
   typeId: number;

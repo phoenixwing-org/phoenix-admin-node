@@ -18,6 +18,8 @@ Pah manifest format v2 的生产迁移只接受受信任、编译期挂载插件
 src/modules/<moduleId>/
 ├── pah-plugin.artifacts.json
 ├── entity/
+├── runtime/
+│   └── example-runtime.cjs
 └── migrations/
     ├── 0001-bootstrap.sql
     └── 0002-add-index.sql
@@ -55,9 +57,32 @@ manifest 的每条迁移声明唯一 SQL 路径：
 {
   "formatVersion": 1,
   "moduleId": "example-plugin",
-  "version": "0.1.0"
+  "version": "0.1.0",
+  "runtimeArtifacts": [
+    {
+      "id": "example-node-runtime",
+      "runtime": "node",
+      "format": "commonjs",
+      "path": "runtime/example-runtime.cjs",
+      "size": 142,
+      "sha256": "<64 lowercase hex>"
+    }
+  ]
 }
 ```
+
+`runtimeArtifacts` 是 descriptor v1 的可选 additive 字段，不改变 manifest
+format v2，也不要求 Admin Vue 增加校验。Host 只接受固定的
+`id/runtime/format/path/size/sha256` 字段，其中 runtime/format 当前固定为
+`node/commonjs`。路径必须是安全的 POSIX 相对 `.cjs` 路径，不得覆盖 descriptor
+或 migrations；绝对路径、父目录、反斜杠、symlink、重复 id/path、额外字段、
+size/SHA 不一致均使 production build 失败。
+
+运行时 CJS 必须是插件预构建的自包含制品。装配器只允许 Node builtin import；
+相对 import 必须指向同一 descriptor 已声明的 runtime artifact，bare import、
+未声明相对 import、动态 require/import 或静态 ESM import 均拒绝。Host 不运行
+postinstall，不搜索或复制插件 `node_modules`，也不联网安装产品依赖。验证成功后，
+制品按原相对路径复制到 `dist/modules/<moduleId>` 并再次核对字节数与 SHA-256。
 
 `PahCompiledPluginRegistry` 在 dry-run 时按安全 `moduleId` 惰性查找 `pah-plugin.artifacts.json`，核对 descriptor、manifest 与目录名的模块/版本一致性后自动登记绝对包根。生产只查编译输出目录；非生产环境额外允许同一工作区的 `src/modules/<moduleId>`。登记和路径均没有 HTTP 接口。
 
@@ -76,7 +101,7 @@ manifest 的每条迁移声明唯一 SQL 路径：
 
 1. `cool entity` 通用扫描 `src/modules/*/entity/**/*.ts` 并生成生产实体清单；
 2. TypeScript 编译业务模块；
-3. `scripts/copy-pah-plugin-artifacts.mjs` 校验通用 descriptor，并将 descriptor 与所有 `src/modules/*/migrations` 原样复制到 `dist/modules/*`；存在迁移目录但缺少/错配 descriptor 时构建失败；
+3. `scripts/copy-pah-plugin-artifacts.mjs` 校验通用 descriptor，将 descriptor、所有 `src/modules/*/migrations` 与已声明 runtime artifacts 原样复制到 `dist/modules/*`；存在迁移或 runtime 制品但 descriptor 缺失、错配或校验失败时构建失败；
 4. 打包配置把 descriptor 和 SQL 作为资产包含。
 
 Host 仓不提交业务插件目录或产品路径。构建流水线挂载的业务源码、生成的产品实体导入和 SQL 只存在于受控构建工作区/产物；业务插件仓仍是源码真源。

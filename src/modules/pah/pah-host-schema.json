@@ -1,0 +1,13 @@
+{
+  "formatVersion": 1,
+  "schemaId": "pah-host",
+  "version": 1,
+  "migrations": [
+    {
+      "id": "pah-host-dictionary-reconcile",
+      "version": 1,
+      "path": "schema/0001-dictionary-reconcile.sql",
+      "checksum": "sha256:c9f33662bf2714da5ec84b2282795b9ca24fabd8bb65753b9d16a7188347fe7f"
+    }
+  ]
+}

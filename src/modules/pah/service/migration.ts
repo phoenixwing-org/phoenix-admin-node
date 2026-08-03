@@ -25,10 +25,22 @@ const MIGRATION_PLAN_TTL_MS = 15 * 60 * 1000;
 export const PAH_COMPILED_PLUGIN_DESCRIPTOR = 'pah-plugin.artifacts.json';
 export const PAH_COMPILED_PLUGIN_DESCRIPTOR_VERSION = 1 as const;
 
+export interface PahCompiledPluginRuntimeArtifact {
+  id: string;
+  runtime: 'node';
+  format: 'commonjs';
+  /** 相对插件编译根目录的安全 POSIX 路径；构建时按原路径复制。 */
+  path: string;
+  size: number;
+  sha256: string;
+}
+
 export interface PahCompiledPluginDescriptor {
   formatVersion: typeof PAH_COMPILED_PLUGIN_DESCRIPTOR_VERSION;
   moduleId: string;
   version: string;
+  /** 可选的插件自包含 Node 运行时制品；由 Host 构建装配器严格校验。 */
+  runtimeArtifacts?: PahCompiledPluginRuntimeArtifact[];
 }
 
 export interface PahCompiledPluginRegistration {

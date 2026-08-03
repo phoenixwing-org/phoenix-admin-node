@@ -34,9 +34,56 @@ export class PahPluginController extends BaseController {
     return this.ok(await this.pahPluginService.migrationPlan(moduleId));
   }
 
+  @Get('/dictionary-plan', {
+    summary: '只读检查插件字典 catalog 与 Cool 当前数据差异',
+  })
+  async dictionaryPlan(@Query('moduleId') moduleId: string) {
+    return this.ok(await this.pahPluginService.dictionaryPlan(moduleId));
+  }
+
+  @Get('/dictionary-records', {
+    summary: '查询插件字典 reconcile 审计台账',
+  })
+  async dictionaryRecords(
+    @Query('moduleId') moduleId: string,
+    @Query('page') page: unknown,
+    @Query('size') size: unknown
+  ) {
+    return this.ok(
+      await this.pahPluginService.dictionaryRecords(moduleId, page, size)
+    );
+  }
+
+  @Post('/dictionary-reconcile', {
+    summary: '按已确认计划补全已启用插件的产品字典',
+  })
+  async dictionaryReconcile(
+    @Body('moduleId') moduleId: string,
+    @Body('dictionaryFingerprint') dictionaryFingerprint: string,
+    @Body('dictionaryConfirmed') dictionaryConfirmed: boolean
+  ) {
+    return this.ok(
+      await this.pahPluginService.dictionaryReconcile(
+        moduleId,
+        dictionaryFingerprint,
+        dictionaryConfirmed
+      )
+    );
+  }
+
   @Post('/enable', { summary: '启用插件贡献' })
-  async enable(@Body('moduleId') moduleId: string) {
-    return this.ok(await this.pahPluginService.enable(moduleId));
+  async enable(
+    @Body('moduleId') moduleId: string,
+    @Body('dictionaryFingerprint') dictionaryFingerprint?: string,
+    @Body('dictionaryConfirmed') dictionaryConfirmed?: boolean
+  ) {
+    return this.ok(
+      await this.pahPluginService.enable(
+        moduleId,
+        dictionaryFingerprint,
+        dictionaryConfirmed
+      )
+    );
   }
 
   @Post('/disable', { summary: '停用插件贡献' })

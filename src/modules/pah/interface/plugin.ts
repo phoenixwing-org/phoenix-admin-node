@@ -17,6 +17,43 @@ export const PAH_HOST_REUSE_CAPABILITIES = [
 export type PahHostReuseCapability =
   (typeof PAH_HOST_REUSE_CAPABILITIES)[number];
 
+export const PAH_CAPABILITY_HTTP_METHODS = [
+  'GET',
+  'POST',
+  'PUT',
+  'PATCH',
+  'DELETE',
+] as const;
+
+export type PahCapabilityHttpMethod =
+  (typeof PAH_CAPABILITY_HTTP_METHODS)[number];
+
+export interface PahCapabilityEndpoint {
+  /** HTTP method is part of the permission boundary; read and write paths may coincide. */
+  method: PahCapabilityHttpMethod;
+  /** Absolute Host API template. Named parameters match exactly one path segment. */
+  path: string;
+}
+
+export type PahDictionaryItemClass = 'core' | 'default' | 'transitional';
+
+export interface PahDictionaryContribution {
+  id: string;
+  typeKey: string;
+  typeName: string;
+  policyVersion: number;
+  retainOnUninstall: true;
+  installPresets?: string[];
+  items: Array<{
+    value: string;
+    name: string;
+    orderNum: number;
+    itemClass: PahDictionaryItemClass;
+    presets?: string[];
+    customizable?: Array<'name' | 'orderNum'>;
+  }>;
+}
+
 export type PahPluginLifecycleState =
   | 'uploaded'
   | 'verified'
@@ -87,9 +124,19 @@ export interface PahPluginManifest {
     id: string;
     description: string;
     risk: 'read' | 'write' | 'admin';
+    /**
+     * Explicit Host endpoints guarded by this semantic capability.
+     *
+     * Older manifests may omit this field and retain Cool's historical
+     * capability-id-to-path convention. REST-style or parameterized routes
+     * must declare endpoints so non-root authorization is executable.
+     */
+    endpoints?: PahCapabilityEndpoint[];
   }>;
   resourcePolicies: string[];
   auditCategories: Array<{ id: string; description: string }>;
+  /** Product-owned catalog; Pah materializes it through Cool dictionary storage. */
+  dictionaryContributions?: PahDictionaryContribution[];
   migrations: PahPluginMigrationDeclaration[];
   healthChecks: Array<{ id: string; path: string }>;
   hostReuse: PahHostReuseCapability[];
@@ -185,6 +232,50 @@ function isSafeMigrationArtifactPath(value: unknown) {
     value.endsWith('.sql') &&
     segments.every(segment => /^[a-z0-9][a-z0-9._-]*$/.test(segment))
   );
+}
+
+function isSafeCapabilityEndpointPath(value: unknown, apiPrefix: string) {
+  if (!isText(value) || !apiPrefix || !value.startsWith(apiPrefix)) {
+    return false;
+  }
+  if (
+    value.includes('\\') ||
+    value.includes('?') ||
+    value.includes('#') ||
+    value.includes('..') ||
+    value.includes('*') ||
+    value.includes(',') ||
+    value.includes(' ')
+  ) {
+    return false;
+  }
+  const segments = value.split('/').slice(1);
+  return (
+    segments.length >= 3 &&
+    segments.every(
+      segment =>
+        /^[a-zA-Z0-9._-]+$/.test(segment) ||
+        /^:[a-zA-Z][a-zA-Z0-9_]*$/.test(segment)
+    )
+  );
+}
+
+/** Encode one endpoint into the comma-safe Cool menu permission token. */
+export function encodePahCapabilityEndpoint(endpoint: PahCapabilityEndpoint) {
+  return `${endpoint.method} ${endpoint.path}`;
+}
+
+/**
+ * Materialized Cool permission values for one semantic capability.
+ * The semantic id remains the stable contribution key even when runtime
+ * permission tokens are explicit HTTP endpoint templates.
+ */
+export function pahCapabilityPermissionTokens(
+  capability: PahPluginManifest['capabilities'][number]
+) {
+  return capability.endpoints?.length
+    ? [capability.id, ...capability.endpoints.map(encodePahCapabilityEndpoint)]
+    : [capability.id];
 }
 
 /**
@@ -321,6 +412,52 @@ export function validatePahPluginManifest(
     ) {
       errors.push(`能力码越界：${String(capability?.id ?? '')}`);
     }
+    if (
+      capability?.endpoints !== undefined &&
+      !Array.isArray(capability.endpoints)
+    ) {
+      errors.push(`能力 endpoint 必须是数组：${String(capability?.id ?? '')}`);
+      continue;
+    }
+    if (
+      Array.isArray(capability?.endpoints) &&
+      capability.endpoints.length === 0
+    ) {
+      errors.push(`能力 endpoints 不能为空：${String(capability?.id ?? '')}`);
+    }
+    for (const endpoint of capability?.endpoints ?? []) {
+      if (
+        !endpoint ||
+        typeof endpoint !== 'object' ||
+        !PAH_CAPABILITY_HTTP_METHODS.includes(endpoint.method as any)
+      ) {
+        errors.push(
+          `能力 endpoint method 不受支持：${String(capability?.id ?? '')}`
+        );
+      }
+      if (
+        !endpoint ||
+        typeof endpoint !== 'object' ||
+        !isSafeCapabilityEndpointPath(endpoint.path, input.apiPrefix ?? '')
+      ) {
+        errors.push(
+          `能力 endpoint 路径越界或不安全：${String(
+            endpoint && typeof endpoint === 'object' ? endpoint.path ?? '' : ''
+          )}`
+        );
+      }
+    }
+    for (const duplicate of duplicates(
+      (capability?.endpoints ?? [])
+        .map(endpoint =>
+          endpoint && typeof endpoint === 'object'
+            ? `${String(endpoint.method)} ${String(endpoint.path)}`
+            : ''
+        )
+        .filter(Boolean)
+    )) {
+      errors.push(`能力内重复 endpoint：${duplicate}`);
+    }
   }
   for (const duplicate of duplicates(
     capabilities.map(item => item?.id).filter(isText)
@@ -330,10 +467,178 @@ export function validatePahPluginManifest(
   const capabilityIds = new Set(
     capabilities.map(item => item?.id).filter(isText)
   );
+  for (const duplicate of duplicates(
+    capabilities
+      .flatMap(capability =>
+        (capability?.endpoints ?? []).map(endpoint =>
+          endpoint && typeof endpoint === 'object'
+            ? `${String(endpoint.method)} ${String(endpoint.path)}`
+            : ''
+        )
+      )
+      .filter(Boolean)
+  )) {
+    errors.push(`多个能力重复声明 endpoint：${duplicate}`);
+  }
   for (const route of routes) {
     if (isText(route?.capability) && !capabilityIds.has(route.capability)) {
       errors.push(`路由引用未声明能力码：${route.capability}`);
     }
+  }
+
+  const dictionaryContributions = Array.isArray(input.dictionaryContributions)
+    ? input.dictionaryContributions
+    : [];
+  if (
+    input.dictionaryContributions !== undefined &&
+    !Array.isArray(input.dictionaryContributions)
+  ) {
+    errors.push('dictionaryContributions 必须是数组');
+  }
+  for (const contribution of dictionaryContributions) {
+    if (
+      !contribution ||
+      typeof contribution !== 'object' ||
+      !isText(contribution.id) ||
+      !contribution.id.startsWith(`${moduleId}-`)
+    ) {
+      errors.push(`字典贡献 ID 越界：${String(contribution?.id ?? '')}`);
+      continue;
+    }
+    if (
+      !isText(contribution.typeKey) ||
+      contribution.typeKey.length > 128 ||
+      !contribution.typeKey.startsWith(`${moduleId}.`) ||
+      !/^[a-z][a-z0-9-]*(\.[a-zA-Z][a-zA-Z0-9-]*)+$/.test(contribution.typeKey)
+    ) {
+      errors.push(
+        `字典 typeKey 越界或不安全：${String(contribution.typeKey ?? '')}`
+      );
+    }
+    if (!isText(contribution.typeName) || !contribution.typeName.trim()) {
+      errors.push(`字典类型缺少名称：${contribution.id}`);
+    }
+    if (
+      !Number.isInteger(contribution.policyVersion) ||
+      contribution.policyVersion < 1
+    ) {
+      errors.push(`字典策略版本无效：${contribution.id}`);
+    }
+    if (contribution.retainOnUninstall !== true) {
+      errors.push(`字典贡献卸载时必须保留：${contribution.id}`);
+    }
+    if (!Array.isArray(contribution.items) || contribution.items.length === 0) {
+      errors.push(`字典贡献缺少 items：${contribution.id}`);
+      continue;
+    }
+    const installPresets = Array.isArray(contribution.installPresets)
+      ? contribution.installPresets
+      : [];
+    if (
+      contribution.installPresets !== undefined &&
+      !Array.isArray(contribution.installPresets)
+    ) {
+      errors.push(`字典安装 presets 必须是数组：${contribution.id}`);
+    }
+    for (const preset of installPresets) {
+      if (!isText(preset) || !/^[a-z][a-z0-9-]*$/.test(preset)) {
+        errors.push(
+          `字典安装 preset 无效：${contribution.id}:${String(preset)}`
+        );
+      }
+    }
+    for (const duplicate of duplicates(installPresets.filter(isText))) {
+      errors.push(`字典重复安装 preset：${contribution.id}:${duplicate}`);
+    }
+    for (const item of contribution.items) {
+      if (
+        !item ||
+        typeof item !== 'object' ||
+        !isText(item.value) ||
+        !item.value.trim() ||
+        item.value.length > 128 ||
+        /[,\s]/.test(item.value)
+      ) {
+        errors.push(`字典 item value 无效：${contribution.id}`);
+        continue;
+      }
+      if (!isText(item.name) || !item.name.trim()) {
+        errors.push(`字典 item 缺少名称：${contribution.id}:${item.value}`);
+      }
+      if (!Number.isInteger(item.orderNum) || item.orderNum < 0) {
+        errors.push(`字典 item 排序无效：${contribution.id}:${item.value}`);
+      }
+      if (!['core', 'default', 'transitional'].includes(item.itemClass)) {
+        errors.push(`字典 item class 无效：${contribution.id}:${item.value}`);
+      }
+      const presets = Array.isArray(item.presets) ? item.presets : [];
+      if (item.presets !== undefined && !Array.isArray(item.presets)) {
+        errors.push(
+          `字典 item presets 必须是数组：${contribution.id}:${item.value}`
+        );
+      }
+      for (const preset of presets) {
+        if (!isText(preset) || !/^[a-z][a-z0-9-]*$/.test(preset)) {
+          errors.push(
+            `字典 item preset 无效：${contribution.id}:${item.value}:${String(
+              preset
+            )}`
+          );
+        }
+      }
+      for (const duplicate of duplicates(presets.filter(isText))) {
+        errors.push(
+          `字典 item 重复 preset：${contribution.id}:${item.value}:${duplicate}`
+        );
+      }
+      if (item.itemClass === 'core' && presets.length) {
+        errors.push(
+          `core 字典协议项不能受 preset 过滤：${contribution.id}:${item.value}`
+        );
+      }
+      if (
+        item.customizable !== undefined &&
+        (!Array.isArray(item.customizable) ||
+          item.customizable.some(
+            field => !['name', 'orderNum'].includes(field)
+          ))
+      ) {
+        errors.push(
+          `字典 item 可定制字段无效：${contribution.id}:${item.value}`
+        );
+      }
+      for (const duplicate of duplicates(
+        Array.isArray(item.customizable) ? item.customizable.filter(isText) : []
+      )) {
+        errors.push(
+          `字典 item 重复可定制字段：${contribution.id}:${item.value}:${duplicate}`
+        );
+      }
+      if (
+        item.itemClass === 'core' &&
+        Array.isArray(item.customizable) &&
+        item.customizable.includes('orderNum')
+      ) {
+        errors.push(
+          `core 字典协议项不得定制顺序：${contribution.id}:${item.value}`
+        );
+      }
+    }
+    for (const duplicate of duplicates(
+      contribution.items.map(item => item?.value).filter(isText)
+    )) {
+      errors.push(`字典贡献重复 item：${contribution.id}:${duplicate}`);
+    }
+  }
+  for (const duplicate of duplicates(
+    dictionaryContributions.map(item => item?.id).filter(isText)
+  )) {
+    errors.push(`重复字典贡献 ID：${duplicate}`);
+  }
+  for (const duplicate of duplicates(
+    dictionaryContributions.map(item => item?.typeKey).filter(isText)
+  )) {
+    errors.push(`重复字典 typeKey：${duplicate}`);
   }
 
   const migrations = Array.isArray(input.migrations) ? input.migrations : [];

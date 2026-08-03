@@ -133,30 +133,27 @@ export class PahNavigationService extends BaseService {
     return this.read();
   }
 
-  async ensurePluginPreferredGroup(
-    moduleId: string,
-    navigationModuleId: string,
-    groupKey: string
-  ) {
+  async ensurePluginDefaultGroup(moduleId: string, navigationModuleId: string) {
     await this.ensureDefaults();
+    return this.ensurePluginDefaultGroupTarget(moduleId, navigationModuleId);
+  }
+
+  private async ensurePluginDefaultGroupTarget(
+    moduleId: string,
+    navigationModuleId: string
+  ) {
     const targetKey = `plugin:${moduleId}:${navigationModuleId}`;
     const existing = await this.navigationAssignmentEntity.findOne({
       where: { targetKey: Equal(targetKey) },
     });
     if (existing) return;
-    const preferredGroup = await this.navigationGroupEntity.findOne({
-      where: { groupKey: Equal(groupKey) },
+    const businessGroup = await this.navigationGroupEntity.findOne({
+      where: { groupKey: Equal(PAH_BUSINESS_NAVIGATION_GROUP_KEY) },
     });
-    const fallbackGroup = preferredGroup
-      ? null
-      : await this.navigationGroupEntity.findOne({
-          where: { groupKey: Equal(PAH_BUSINESS_NAVIGATION_GROUP_KEY) },
-        });
-    const targetGroup = preferredGroup || fallbackGroup;
-    if (!targetGroup) return;
+    if (!businessGroup) return;
     await this.navigationAssignmentEntity.save({
       targetKey,
-      groupId: targetGroup.id,
+      groupId: businessGroup.id,
     });
   }
 
@@ -194,7 +191,7 @@ export class PahNavigationService extends BaseService {
           groupId: group.id,
         });
     }
-    // 已安装插件可能早于大分组功能存在。首次读取时补上建议归属，
+    // 已安装插件可能早于大分组功能存在。首次读取时统一补到“业务”，
     // 但一旦管理员已配置稳定目标键，绝不覆盖该选择。
     const plugins = await this.pluginInstallationEntity.find({
       where: { state: Equal('enabled') },
@@ -202,23 +199,8 @@ export class PahNavigationService extends BaseService {
     for (const plugin of plugins) {
       const navigation = plugin.manifest?.navigation;
       if (!navigation?.modules?.length) continue;
-      const preferredGroup = await this.navigationGroupEntity.findOne({
-        where: { groupKey: Equal(navigation.preferredGroupId) },
-      });
-      const fallbackGroup = await this.navigationGroupEntity.findOne({
-        where: { groupKey: Equal(PAH_BUSINESS_NAVIGATION_GROUP_KEY) },
-      });
       for (const module of navigation.modules) {
-        const targetKey = `plugin:${plugin.moduleId}:${module.id}`;
-        const existing = await this.navigationAssignmentEntity.findOne({
-          where: { targetKey: Equal(targetKey) },
-        });
-        if (!existing && (preferredGroup || fallbackGroup)) {
-          await this.navigationAssignmentEntity.save({
-            targetKey,
-            groupId: (preferredGroup || fallbackGroup)!.id,
-          });
-        }
+        await this.ensurePluginDefaultGroupTarget(plugin.moduleId, module.id);
       }
     }
   }

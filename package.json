@@ -80,7 +80,10 @@
       "typings/**/*",
       "src/locales/**/*",
       "dist/modules/*/pah-plugin.artifacts.json",
-      "dist/modules/*/migrations/**/*.sql"
+      "dist/modules/*/migrations/**/*.sql",
+      "dist/modules/*/runtime/**/*.cjs",
+      "dist/modules/pah/pah-host-schema.json",
+      "dist/modules/pah/schema/**/*.sql"
     ],
     "targets": [
       "node20-win-x64"

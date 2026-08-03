@@ -14,20 +14,21 @@ import * as entity11 from './modules/pah/entity/navigation-group';
 import * as entity12 from './modules/pah/entity/navigation-group-assignment';
 import * as entity13 from './modules/pah/entity/migration-record';
 import * as entity14 from './modules/pah/entity/menu-contribution';
-import * as entity15 from './modules/dict/entity/type';
-import * as entity16 from './modules/dict/entity/info';
-import * as entity17 from './modules/demo/entity/goods';
-import * as entity18 from './modules/base/entity/base';
-import * as entity19 from './modules/base/entity/sys/user_role';
-import * as entity20 from './modules/base/entity/sys/user';
-import * as entity21 from './modules/base/entity/sys/role_menu';
-import * as entity22 from './modules/base/entity/sys/role_department';
-import * as entity23 from './modules/base/entity/sys/role';
-import * as entity24 from './modules/base/entity/sys/param';
-import * as entity25 from './modules/base/entity/sys/menu';
-import * as entity26 from './modules/base/entity/sys/log';
-import * as entity27 from './modules/base/entity/sys/department';
-import * as entity28 from './modules/base/entity/sys/conf';
+import * as entity15 from './modules/pah/entity/dictionary-reconcile-record';
+import * as entity16 from './modules/dict/entity/type';
+import * as entity17 from './modules/dict/entity/info';
+import * as entity18 from './modules/demo/entity/goods';
+import * as entity19 from './modules/base/entity/base';
+import * as entity20 from './modules/base/entity/sys/user_role';
+import * as entity21 from './modules/base/entity/sys/user';
+import * as entity22 from './modules/base/entity/sys/role_menu';
+import * as entity23 from './modules/base/entity/sys/role_department';
+import * as entity24 from './modules/base/entity/sys/role';
+import * as entity25 from './modules/base/entity/sys/param';
+import * as entity26 from './modules/base/entity/sys/menu';
+import * as entity27 from './modules/base/entity/sys/log';
+import * as entity28 from './modules/base/entity/sys/department';
+import * as entity29 from './modules/base/entity/sys/conf';
 export const entities = [
   ...Object.values(entity0),
   ...Object.values(entity1),
@@ -58,4 +59,5 @@ export const entities = [
   ...Object.values(entity26),
   ...Object.values(entity27),
   ...Object.values(entity28),
+  ...Object.values(entity29),
 ];

@@ -12,6 +12,42 @@ import {
 import { CachingFactory, MidwayCache } from '@midwayjs/cache-manager';
 import { Utils } from '../../../comm/utils';
 
+const EXPLICIT_ENDPOINT_PERMISSION =
+  /^(GET|POST|PUT|PATCH|DELETE) (\/admin\/[a-zA-Z0-9._/:-]+)$/;
+
+function matchesEndpointTemplate(template: string, url: string) {
+  const templateSegments = template.split('/');
+  const urlSegments = url.split('/');
+  if (templateSegments.length !== urlSegments.length) return false;
+  return templateSegments.every((segment, index) => {
+    if (/^:[a-zA-Z][a-zA-Z0-9_]*$/.test(segment)) {
+      return Boolean(urlSegments[index]);
+    }
+    return segment === urlSegments[index];
+  });
+}
+
+/**
+ * Cool's historical permission format derives an API path from colon-separated
+ * action ids. Pah additionally supports explicit method + path templates for
+ * REST-style plugin APIs with named parameters.
+ */
+export function matchesCoolPermission(
+  permission: string,
+  method: string,
+  url: string
+) {
+  const normalizedUrl = url.split('?')[0];
+  const explicit = permission.match(EXPLICIT_ENDPOINT_PERMISSION);
+  if (explicit) {
+    return (
+      explicit[1] === method.toUpperCase() &&
+      matchesEndpointTemplate(explicit[2], normalizedUrl)
+    );
+  }
+  return permission.replace(/:/g, '/') === normalizedUrl.replace('/admin/', '');
+}
+
 /**
  * 权限校验
  */
@@ -111,10 +147,11 @@ export class BaseAuthorityMiddleware
               `admin:perms:${ctx.admin.userId}`
             );
             if (!_.isEmpty(perms)) {
-              perms = perms.map(e => {
-                return e.replace(/:/g, '/');
-              });
-              if (!perms.includes(url.split('?')[0].replace('/admin/', ''))) {
+              if (
+                !perms.some(permission =>
+                  matchesCoolPermission(permission, ctx.method, url)
+                )
+              ) {
                 statusCode = 403;
               }
             } else {
