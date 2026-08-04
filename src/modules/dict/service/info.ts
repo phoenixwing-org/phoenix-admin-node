@@ -1,10 +1,15 @@
 import { DictTypeEntity } from './../entity/type';
 import { DictInfoEntity } from './../entity/info';
 import { Config, Provide } from '@midwayjs/core';
-import { BaseService } from '@cool-midway/core';
+import { BaseService, CoolCommException } from '@cool-midway/core';
 import { InjectEntityModel } from '@midwayjs/typeorm';
 import { Repository, In } from 'typeorm';
 import * as _ from 'lodash';
+import { normalizeDictionaryTags } from '../util/governance';
+
+function ownsProperty(value: object, key: string) {
+  return Object.prototype.hasOwnProperty.call(value, key);
+}
 
 /**
  * 字典信息
@@ -42,12 +47,17 @@ export class DictInfoService extends BaseService {
         'a.parentId',
         'a.orderNum',
         'a.value',
+        'a.enabled',
+        'a.tags',
+        'a.core',
+        'a.ownerModuleId',
       ])
       .where('a.typeId in(:...typeIds)', {
         typeIds: typeData.map(e => {
           return e.id;
         }),
       })
+      .andWhere('a.enabled = :enabled', { enabled: true })
       .orderBy('a.orderNum', 'ASC')
       .addOrderBy('a.createTime', 'ASC')
       .getMany();
@@ -87,7 +97,7 @@ export class DictInfoService extends BaseService {
 
     // 根据typeId获取所有相关的字典信息
     const dictValues = await this.dictInfoEntity.find({
-      where: { typeId: type.id },
+      where: { typeId: type.id, enabled: true },
     });
 
     // 如果value是字符串，直接查找
@@ -111,6 +121,60 @@ export class DictInfoService extends BaseService {
       result = dictValues.find(dictValue => dictValue.id === parseInt(value));
     }
     return result ? result.name : null; // 或者适当的错误处理
+  }
+
+  /**
+   * 普通 Cool CRUD 只能维护自定义字段；插件所有权与 core 标识仅由 Pah
+   * reconcile 在受控事务中写入。
+   */
+  async modifyBefore(data: any, type: 'delete' | 'update' | 'add') {
+    if (type === 'delete') {
+      const ids = this.normalizeIds(data);
+      const protectedItems = await this.findProtectedDeleteItems(ids);
+      if (protectedItems.length) {
+        throw new CoolCommException(
+          `核心或插件受管字典项不可删除：${protectedItems
+            .map(item => item.name || item.value || item.id)
+            .join('、')}`
+        );
+      }
+      return;
+    }
+
+    const rows = Array.isArray(data) ? data : [data];
+    if (type === 'add') {
+      for (const row of rows) {
+        if (row.core === true || row.ownerModuleId) {
+          throw new CoolCommException(
+            '普通字典接口不能创建插件受管或核心字典项'
+          );
+        }
+        row.enabled = row.enabled === undefined ? true : Boolean(row.enabled);
+        row.tags = normalizeDictionaryTags(row.tags);
+        row.core = false;
+        row.ownerModuleId = null;
+      }
+      return;
+    }
+
+    const ids = rows.map(row => Number(row.id)).filter(Number.isInteger);
+    const existingRows = ids.length
+      ? await this.dictInfoEntity.findBy({ id: In(ids) })
+      : [];
+    const existingById = new Map(existingRows.map(row => [row.id, row]));
+    for (const row of rows) {
+      const existing = existingById.get(Number(row.id));
+      if (!existing) {
+        throw new CoolCommException('字典项不存在或已被删除');
+      }
+      if (ownsProperty(row, 'tags')) {
+        row.tags = normalizeDictionaryTags(row.tags);
+      }
+      if (ownsProperty(row, 'enabled')) {
+        row.enabled = Boolean(row.enabled);
+      }
+      this.assertProtectedUpdate(existing, row);
+    }
   }
 
   /**
@@ -141,6 +205,76 @@ export class DictInfoService extends BaseService {
     await this.dictInfoEntity.delete(delDictIds);
     for (const dictId of delDictIds) {
       await this.delChildDict(dictId);
+    }
+  }
+
+  private normalizeIds(data: unknown): number[] {
+    const source = Array.isArray(data) ? data : [data];
+    return source
+      .flatMap(item =>
+        typeof item === 'object' && item !== null && 'id' in item
+          ? [(item as { id: unknown }).id]
+          : [item]
+      )
+      .map(Number)
+      .filter(Number.isInteger);
+  }
+
+  private async findProtectedDeleteItems(ids: number[]) {
+    const all = new Map<number, DictInfoEntity>();
+    let pending = [...new Set(ids)];
+    while (pending.length) {
+      const rows = await this.dictInfoEntity.findBy([
+        { id: In(pending) },
+        { parentId: In(pending) },
+      ]);
+      const next: number[] = [];
+      for (const row of rows) {
+        if (!all.has(row.id)) next.push(row.id);
+        all.set(row.id, row);
+      }
+      pending = next;
+    }
+    return [...all.values()].filter(item => item.core || item.ownerModuleId);
+  }
+
+  private assertProtectedUpdate(existing: DictInfoEntity, update: any) {
+    if (!existing.core && !existing.ownerModuleId) {
+      if (update.core === true || update.ownerModuleId) {
+        throw new CoolCommException(
+          '普通字典接口不能接管插件所有权或设置核心项'
+        );
+      }
+      return;
+    }
+
+    const immutableFields = existing.core
+      ? [
+          'typeId',
+          'value',
+          'orderNum',
+          'parentId',
+          'enabled',
+          'tags',
+          'core',
+          'ownerModuleId',
+        ]
+      : ['typeId', 'value', 'core', 'ownerModuleId'];
+    for (const field of immutableFields) {
+      if (!ownsProperty(update, field)) continue;
+      const current = existing[field];
+      const next = update[field];
+      const unchanged = Array.isArray(current)
+        ? JSON.stringify(normalizeDictionaryTags(current)) ===
+          JSON.stringify(normalizeDictionaryTags(next))
+        : current === next;
+      if (!unchanged) {
+        throw new CoolCommException(
+          existing.core
+            ? '核心字典项仅允许修改显示名称和备注'
+            : '插件受管字典项不能修改稳定值、核心标识或所有者'
+        );
+      }
     }
   }
 }

@@ -636,6 +636,11 @@ describe('Pah 通用 SQL 迁移执行器', () => {
     );
     mkdirSync(path.dirname(sourceRoot), { recursive: true });
     cpSync(MIGRATION_FIXTURE_ROOT, sourceRoot, { recursive: true });
+    cpSync(
+      path.resolve(__dirname, '../../../src/modules/pah'),
+      path.join(tempRoot, 'src/modules/pah'),
+      { recursive: true }
+    );
     try {
       const assembled = spawnSync(process.execPath, [assembler], {
         cwd: tempRoot,
@@ -704,10 +709,7 @@ describe('Pah 通用 SQL 迁移执行器', () => {
       const sourceRoot = path.join(tempRoot, 'src/modules', MODULE_ID);
       mkdirSync(path.dirname(sourceRoot), { recursive: true });
       cpSync(MIGRATION_FIXTURE_ROOT, sourceRoot, { recursive: true });
-      const descriptorPath = path.join(
-        sourceRoot,
-        'pah-plugin.artifacts.json'
-      );
+      const descriptorPath = path.join(sourceRoot, 'pah-plugin.artifacts.json');
       const descriptor = JSON.parse(readFileSync(descriptorPath, 'utf8'));
       const artifact = descriptor.runtimeArtifacts[0];
       const artifactPath = path.join(sourceRoot, RUNTIME_ARTIFACT_PATH);
@@ -748,10 +750,7 @@ describe('Pah 通用 SQL 迁移执行器', () => {
         .digest('hex');
     };
 
-    runInvalidCase(
-      ({ artifactPath }) => rmSync(artifactPath),
-      '文件不存在'
-    );
+    runInvalidCase(({ artifactPath }) => rmSync(artifactPath), '文件不存在');
     runInvalidCase(({ artifact }) => {
       artifact.size += 1;
     }, 'size 不匹配');
@@ -792,7 +791,10 @@ describe('Pah 通用 SQL 迁移执行器', () => {
       replaceArtifact(context, "module.exports = require('./other.cjs');\n");
     }, '引用了未声明的运行时依赖 ./other.cjs');
     runInvalidCase(context => {
-      replaceArtifact(context, 'module.exports = require(process.env.RUNTIME);\n');
+      replaceArtifact(
+        context,
+        'module.exports = require(process.env.RUNTIME);\n'
+      );
     }, '不得使用动态 require');
   });
 

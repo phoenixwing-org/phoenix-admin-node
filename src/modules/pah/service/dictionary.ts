@@ -6,6 +6,7 @@ import { BaseService, CoolCommException } from '@cool-midway/core';
 import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import { DictInfoEntity } from '../../dict/entity/info';
 import { DictTypeEntity } from '../../dict/entity/type';
+import { mergeDictionaryTags } from '../../dict/util/governance';
 import { PahDictionaryReconcileRecordEntity } from '../entity/dictionary-reconcile-record';
 import { PahPluginInstallationEntity } from '../entity/plugin';
 import {
@@ -17,6 +18,7 @@ interface DictionaryTypeSnapshot {
   id: number;
   key: string;
   name: string;
+  ownerModuleId?: string | null;
 }
 
 interface DictionaryItemSnapshot {
@@ -25,6 +27,10 @@ interface DictionaryItemSnapshot {
   value: string;
   name: string;
   orderNum: number;
+  enabled?: boolean;
+  tags?: string[];
+  core?: boolean;
+  ownerModuleId?: string | null;
 }
 
 export interface PahDictionarySnapshot {
@@ -37,7 +43,11 @@ export interface PahDictionaryItemPlan {
   name: string;
   orderNum: number;
   itemClass: string;
-  action: 'create' | 'preserve';
+  enabled: boolean;
+  tags: string[];
+  core: boolean;
+  ownerModuleId: string;
+  action: 'create' | 'update' | 'preserve';
   existingId?: number;
 }
 
@@ -46,7 +56,8 @@ export interface PahDictionaryTypePlan {
   typeKey: string;
   typeName: string;
   policyVersion: number;
-  action: 'create' | 'preserve';
+  ownerModuleId: string;
+  action: 'create' | 'update' | 'preserve';
   existingTypeId?: number;
   items: PahDictionaryItemPlan[];
   preservedCustomItems: number;
@@ -62,7 +73,9 @@ export interface PahDictionaryReconcilePlan {
   conflicts: string[];
   totals: {
     createTypes: number;
+    updateTypes: number;
     createItems: number;
+    updateItems: number;
     preserveItems: number;
     preserveCustomItems: number;
   };
@@ -95,6 +108,20 @@ function installedItems(contribution: PahDictionaryContribution) {
   );
 }
 
+function requiredItemTags(item: PahDictionaryContribution['items'][number]) {
+  return mergeDictionaryTags(
+    item.tags ?? [],
+    item.itemClass === 'core' ? ['core'] : [],
+    item.itemClass === 'transitional' ? ['transitional'] : []
+  );
+}
+
+function sameTags(left: string[] | undefined, right: string[]) {
+  return (
+    JSON.stringify(mergeDictionaryTags(left ?? [])) === JSON.stringify(right)
+  );
+}
+
 export function hashPahDictionaryCatalog(manifest: PahPluginManifest) {
   return createHash('sha256')
     .update(JSON.stringify(manifest.dictionaryContributions ?? []))
@@ -118,6 +145,14 @@ export function planPahDictionaryReconcile(
       continue;
     }
     const existingType = matchingTypes[0];
+    if (
+      existingType?.ownerModuleId &&
+      existingType.ownerModuleId !== manifest.moduleId
+    ) {
+      conflicts.push(
+        `字典类型 ${contribution.typeKey} 已由 ${existingType.ownerModuleId} 管理`
+      );
+    }
     const existingItems = existingType
       ? snapshot.items.filter(item => item.typeId === existingType.id)
       : [];
@@ -146,12 +181,47 @@ export function planPahDictionaryReconcile(
         continue;
       }
       const existing = matchingItems[0];
+      const desiredCore = item.itemClass === 'core';
+      const desiredTags = mergeDictionaryTags(
+        existing?.tags ?? [],
+        requiredItemTags(item)
+      );
+      const desiredEnabled = desiredCore
+        ? true
+        : existing && item.customizable?.includes('enabled')
+        ? existing.enabled ?? true
+        : item.enabled ?? existing?.enabled ?? true;
+      if (
+        existing?.ownerModuleId &&
+        existing.ownerModuleId !== manifest.moduleId
+      ) {
+        conflicts.push(
+          `字典项 ${contribution.typeKey}:${item.value} 已由 ${existing.ownerModuleId} 管理`
+        );
+      }
+      if (existing?.core && !desiredCore) {
+        conflicts.push(
+          `字典项 ${contribution.typeKey}:${item.value} 已是 core，不能降级`
+        );
+      }
+      const needsUpdate = Boolean(
+        existing &&
+          ((!existing.ownerModuleId &&
+            existing.ownerModuleId !== manifest.moduleId) ||
+            Boolean(existing.core) !== desiredCore ||
+            (existing.enabled ?? true) !== desiredEnabled ||
+            !sameTags(existing.tags, desiredTags))
+      );
       itemPlans.push({
         value: item.value,
         name: existing?.name ?? item.name,
         orderNum: existing?.orderNum ?? item.orderNum,
         itemClass: item.itemClass,
-        action: existing ? 'preserve' : 'create',
+        enabled: desiredEnabled,
+        tags: desiredTags,
+        core: desiredCore,
+        ownerModuleId: manifest.moduleId,
+        action: existing ? (needsUpdate ? 'update' : 'preserve') : 'create',
         ...(existing ? { existingId: existing.id } : {}),
       });
     }
@@ -160,7 +230,14 @@ export function planPahDictionaryReconcile(
       typeKey: contribution.typeKey,
       typeName: existingType?.name ?? contribution.typeName,
       policyVersion: contribution.policyVersion,
-      action: existingType ? 'preserve' : 'create',
+      ownerModuleId: manifest.moduleId,
+      action: existingType
+        ? existingType.ownerModuleId === manifest.moduleId
+          ? 'preserve'
+          : existingType.ownerModuleId
+          ? 'preserve'
+          : 'update'
+        : 'create',
       ...(existingType ? { existingTypeId: existingType.id } : {}),
       items: itemPlans,
       preservedCustomItems: existingItems.filter(
@@ -177,9 +254,13 @@ export function planPahDictionaryReconcile(
     conflicts,
     totals: {
       createTypes: plans.filter(plan => plan.action === 'create').length,
+      updateTypes: plans.filter(plan => plan.action === 'update').length,
       createItems: plans
         .flatMap(plan => plan.items)
         .filter(item => item.action === 'create').length,
+      updateItems: plans
+        .flatMap(plan => plan.items)
+        .filter(item => item.action === 'update').length,
       preserveItems: plans
         .flatMap(plan => plan.items)
         .filter(item => item.action === 'preserve').length,
@@ -358,9 +439,14 @@ export class PahDictionaryService extends BaseService {
                 repositories.types.create({
                   key: typePlan.typeKey,
                   name: typePlan.typeName,
+                  ownerModuleId: typePlan.ownerModuleId,
                 })
               );
               typeId = created.id;
+            } else if (typePlan.action === 'update') {
+              await repositories.types.update(typeId, {
+                ownerModuleId: typePlan.ownerModuleId,
+              });
             }
             const newItems = typePlan.items.filter(
               item => item.action === 'create'
@@ -375,9 +461,23 @@ export class PahDictionaryService extends BaseService {
                     orderNum: item.orderNum,
                     remark: null,
                     parentId: null,
+                    enabled: item.enabled,
+                    tags: item.tags,
+                    core: item.core,
+                    ownerModuleId: item.ownerModuleId,
                   })
                 )
               );
+            }
+            for (const item of typePlan.items.filter(
+              item => item.action === 'update'
+            )) {
+              await repositories.items.update(item.existingId!, {
+                enabled: item.enabled,
+                tags: item.tags,
+                core: item.core,
+                ownerModuleId: item.ownerModuleId,
+              });
             }
           }
           await manager

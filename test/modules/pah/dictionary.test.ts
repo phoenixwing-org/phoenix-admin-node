@@ -75,7 +75,8 @@ describe('Pah 插件字典 reconcile 计划', () => {
     expect(plan.fingerprint).toMatch(/^[a-f0-9]{64}$/);
     expect(plan.types[0]).toEqual(
       expect.objectContaining({
-        action: 'preserve',
+        action: 'update',
+        ownerModuleId: 'example-plugin',
         typeName: '管理员类型名',
         preservedCustomItems: 1,
       })
@@ -85,14 +86,20 @@ describe('Pah 插件字典 reconcile 计划', () => {
         value: 'open',
         name: '管理员显示名',
         orderNum: 9,
-        action: 'preserve',
+        action: 'update',
+        enabled: true,
+        core: true,
+        tags: ['core'],
+        ownerModuleId: 'example-plugin',
       }),
       expect.objectContaining({ value: 'closed', action: 'create' }),
     ]);
     expect(plan.totals).toEqual({
       createTypes: 0,
+      updateTypes: 1,
       createItems: 1,
-      preserveItems: 1,
+      updateItems: 1,
+      preserveItems: 0,
       preserveCustomItems: 1,
     });
   });
@@ -114,17 +121,46 @@ describe('Pah 插件字典 reconcile 计划', () => {
 
   it('重复 reconcile 已完整物化的 catalog 时没有新增动作', () => {
     const plan = planPahDictionaryReconcile(manifest(), {
-      types: [{ id: 7, key: 'example-plugin.status', name: '示例状态' }],
+      types: [
+        {
+          id: 7,
+          key: 'example-plugin.status',
+          name: '示例状态',
+          ownerModuleId: 'example-plugin',
+        },
+      ],
       items: [
-        { id: 8, typeId: 7, value: 'open', name: '打开', orderNum: 0 },
-        { id: 9, typeId: 7, value: 'closed', name: '关闭', orderNum: 1 },
+        {
+          id: 8,
+          typeId: 7,
+          value: 'open',
+          name: '打开',
+          orderNum: 0,
+          enabled: true,
+          tags: ['core'],
+          core: true,
+          ownerModuleId: 'example-plugin',
+        },
+        {
+          id: 9,
+          typeId: 7,
+          value: 'closed',
+          name: '关闭',
+          orderNum: 1,
+          enabled: true,
+          tags: [],
+          core: false,
+          ownerModuleId: 'example-plugin',
+        },
       ],
     });
 
     expect(plan.conflicts).toEqual([]);
     expect(plan.totals).toEqual({
       createTypes: 0,
+      updateTypes: 0,
       createItems: 0,
+      updateItems: 0,
       preserveItems: 2,
       preserveCustomItems: 0,
     });
@@ -172,7 +208,9 @@ describe('Pah 插件字典 reconcile 事务', () => {
     transactionSnapshot: PahDictionarySnapshot = initialSnapshot
   ) {
     const typeSave = jest.fn().mockResolvedValue({ id: 17 });
+    const typeUpdate = jest.fn().mockResolvedValue({ affected: 1 });
     const itemSave = jest.fn(async value => value);
+    const itemUpdate = jest.fn().mockResolvedValue({ affected: 1 });
     const successRecordUpdate = jest.fn().mockResolvedValue({ affected: 1 });
     const failureRecordUpdate = jest.fn().mockResolvedValue({ affected: 1 });
     const recordSave = jest.fn().mockResolvedValue({ id: 41 });
@@ -180,11 +218,13 @@ describe('Pah 插件字典 reconcile 事务', () => {
       find: jest.fn().mockResolvedValue(transactionSnapshot.types),
       create: jest.fn(value => value),
       save: typeSave,
+      update: typeUpdate,
     };
     const transactionItems = {
       find: jest.fn().mockResolvedValue(transactionSnapshot.items),
       create: jest.fn(value => value),
       save: itemSave,
+      update: itemUpdate,
     };
     const manager = {
       getRepository: jest.fn(entity => {
@@ -219,7 +259,9 @@ describe('Pah 插件字典 reconcile 事务', () => {
       service,
       transaction,
       typeSave,
+      typeUpdate,
       itemSave,
+      itemUpdate,
       successRecordUpdate,
       failureRecordUpdate,
       recordSave,
@@ -260,6 +302,44 @@ describe('Pah 插件字典 reconcile 事务', () => {
       },
     });
     expect(harness.failureRecordUpdate).not.toHaveBeenCalled();
+  });
+
+  it('旧字典行补全 owner/core/enabled/tags 后可重复幂等', async () => {
+    const legacySnapshot: PahDictionarySnapshot = {
+      types: [{ id: 17, key: 'example-plugin.status', name: '管理员类型名' }],
+      items: [
+        {
+          id: 18,
+          typeId: 17,
+          value: 'open',
+          name: '管理员显示名',
+          orderNum: 9,
+        },
+      ],
+    };
+    const harness = fixture(legacySnapshot);
+    const plan = await harness.service.dryRun(installation());
+
+    await harness.service.reconcile(installation(), plan.fingerprint);
+
+    expect(harness.typeUpdate).toHaveBeenCalledWith(17, {
+      ownerModuleId: 'example-plugin',
+    });
+    expect(harness.itemUpdate).toHaveBeenCalledWith(18, {
+      enabled: true,
+      tags: ['core'],
+      core: true,
+      ownerModuleId: 'example-plugin',
+    });
+    expect(harness.itemSave).toHaveBeenCalledWith([
+      expect.objectContaining({
+        typeId: 17,
+        value: 'closed',
+        enabled: true,
+        core: false,
+        ownerModuleId: 'example-plugin',
+      }),
+    ]);
   });
 
   it('事务内快照变化时拒绝旧指纹且不写字典', async () => {

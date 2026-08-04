@@ -12,4 +12,7 @@ export class DictTypeEntity extends BaseEntity {
   @Index({ unique: true })
   @Column({ comment: '标识' })
   key: string;
+
+  @Column({ comment: '所有者插件模块', length: 128, nullable: true })
+  ownerModuleId: string | null;
 }

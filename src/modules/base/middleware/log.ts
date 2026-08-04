@@ -17,10 +17,40 @@ export class BaseLogMiddleware implements IMiddleware<Context, NextFunction> {
       baseSysLogService.record(
         ctx,
         ctx.url,
-        ctx.req.method === 'GET' ? ctx.request.query : ctx.request.body,
+        sanitizeBaseLogParams(
+          ctx.path,
+          ctx.req.method === 'GET' ? ctx.request.query : ctx.request.body
+        ),
         ctx.admin ? ctx.admin.userId : null
       );
       await next();
     };
   }
+}
+
+const AUTH_SENSITIVE_FIELDS: Record<string, ReadonlySet<string>> = {
+  '/admin/base/open/login': new Set(['password', 'captchaId', 'verifyCode']),
+  '/admin/base/open/oauth/feishu/callback': new Set(['state', 'code']),
+  '/admin/base/open/oauth/exchange-ticket': new Set(['ticket']),
+  '/admin/base/open/refreshToken': new Set(['refreshToken']),
+};
+
+/** 保留认证动作审计，但禁止凭据、OAuth code/state 和一次性票据落日志。 */
+export function sanitizeBaseLogParams(path: string, params: unknown) {
+  const fields = AUTH_SENSITIVE_FIELDS[path];
+  if (!fields || !params || typeof params !== 'object') return params;
+  return redactObject(params, fields);
+}
+
+function redactObject(value: unknown, fields: ReadonlySet<string>): unknown {
+  if (Array.isArray(value)) {
+    return value.map(item => redactObject(item, fields));
+  }
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [
+      key,
+      fields.has(key) ? '[REDACTED]' : redactObject(item, fields),
+    ])
+  );
 }

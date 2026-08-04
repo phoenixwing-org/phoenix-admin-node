@@ -24,4 +24,21 @@ export class DictInfoEntity extends BaseEntity {
 
   @Column({ comment: '父ID', default: null })
   parentId: number;
+
+  @Column({ comment: '是否启用', default: true })
+  enabled: boolean;
+
+  @Column({
+    comment: '分类标签',
+    type: 'text',
+    array: true,
+    default: () => "'{}'::text[]",
+  })
+  tags: string[];
+
+  @Column({ comment: '是否为受保护核心项', default: false })
+  core: boolean;
+
+  @Column({ comment: '所有者插件模块', length: 128, nullable: true })
+  ownerModuleId: string | null;
 }

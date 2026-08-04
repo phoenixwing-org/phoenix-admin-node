@@ -9,7 +9,13 @@ import {
   realpath,
 } from 'node:fs/promises';
 import { builtinModules } from 'node:module';
+import { createRequire } from 'node:module';
 import path from 'node:path';
+
+const require = createRequire(import.meta.url);
+const { loadAndVerifyManifest: loadAndVerifyHostBaseline } = require(
+  './pah-host-baseline.cjs'
+);
 
 const descriptorName = 'pah-plugin.artifacts.json';
 const descriptorRuntimeArtifactKeys = [
@@ -440,3 +446,11 @@ await cp(path.join(pahSourceRoot, 'schema'), path.join(pahTargetRoot, 'schema'),
   recursive: true,
   force: true,
 });
+
+const hostBaselineSourceRoot = path.join(pahSourceRoot, 'host-baseline');
+loadAndVerifyHostBaseline(hostBaselineSourceRoot);
+await cp(
+  hostBaselineSourceRoot,
+  path.join(pahTargetRoot, 'host-baseline'),
+  { recursive: true, force: true }
+);

@@ -50,7 +50,11 @@ export interface PahDictionaryContribution {
     orderNum: number;
     itemClass: PahDictionaryItemClass;
     presets?: string[];
-    customizable?: Array<'name' | 'orderNum'>;
+    /** Simple classification annotations; no tag catalog or relation table. */
+    tags?: string[];
+    /** Defaults to true. Core protocol values can never be disabled. */
+    enabled?: boolean;
+    customizable?: Array<'name' | 'orderNum' | 'enabled' | 'tags'>;
   }>;
 }
 
@@ -596,11 +600,46 @@ export function validatePahPluginManifest(
           `core 字典协议项不能受 preset 过滤：${contribution.id}:${item.value}`
         );
       }
+      const tags = Array.isArray(item.tags) ? item.tags : [];
+      if (item.tags !== undefined && !Array.isArray(item.tags)) {
+        errors.push(
+          `字典 item tags 必须是数组：${contribution.id}:${item.value}`
+        );
+      }
+      if (tags.length > 32) {
+        errors.push(
+          `字典 item tags 不能超过 32 个：${contribution.id}:${item.value}`
+        );
+      }
+      for (const tag of tags) {
+        if (!isText(tag) || !/^[a-z0-9][a-z0-9._-]{0,63}$/.test(tag)) {
+          errors.push(
+            `字典 item tag 无效：${contribution.id}:${item.value}:${String(
+              tag
+            )}`
+          );
+        }
+      }
+      for (const duplicate of duplicates(tags.filter(isText))) {
+        errors.push(
+          `字典 item 重复 tag：${contribution.id}:${item.value}:${duplicate}`
+        );
+      }
+      if (item.enabled !== undefined && typeof item.enabled !== 'boolean') {
+        errors.push(
+          `字典 item enabled 必须是布尔值：${contribution.id}:${item.value}`
+        );
+      }
+      if (item.itemClass === 'core' && item.enabled === false) {
+        errors.push(
+          `core 字典协议项不能停用：${contribution.id}:${item.value}`
+        );
+      }
       if (
         item.customizable !== undefined &&
         (!Array.isArray(item.customizable) ||
           item.customizable.some(
-            field => !['name', 'orderNum'].includes(field)
+            field => !['name', 'orderNum', 'enabled', 'tags'].includes(field)
           ))
       ) {
         errors.push(
@@ -617,10 +656,10 @@ export function validatePahPluginManifest(
       if (
         item.itemClass === 'core' &&
         Array.isArray(item.customizable) &&
-        item.customizable.includes('orderNum')
+        item.customizable.some(field => field !== 'name')
       ) {
         errors.push(
-          `core 字典协议项不得定制顺序：${contribution.id}:${item.value}`
+          `core 字典协议项只能定制名称：${contribution.id}:${item.value}`
         );
       }
     }

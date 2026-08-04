@@ -17,12 +17,12 @@ Phoenix Admin Node 采用独立产品版本线，当前版本为 `0.1.0`；Cool 
 
 ## 仓库关系
 
-| 项目 | 地址/版本 |
-|---|---|
-| Phoenix 仓库 | <https://gitee.com/phoenixwing/phoenix-admin-node> |
+| 项目            | 地址/版本                                                |
+| --------------- | -------------------------------------------------------- |
+| Phoenix 仓库    | <https://gitee.com/phoenixwing/phoenix-admin-node>       |
 | Cool Admin 上游 | <https://gitee.com/cool-team-official/cool-admin-midway> |
-| 固定基线 | `8.x` / `e545ef6f3b0c08581e34bd3207ca57d851ccc3ae` |
-| 配套前端 | <https://gitee.com/phoenixwing/phoenix-admin-vue> |
+| 固定基线        | `8.x` / `e545ef6f3b0c08581e34bd3207ca57d851ccc3ae`       |
+| 配套前端        | <https://gitee.com/phoenixwing/phoenix-admin-vue>        |
 
 详细同步规则见 [UPSTREAM.md](UPSTREAM.md)。
 
@@ -53,8 +53,14 @@ pnpm dev
 
 后端欢迎页为 <http://localhost:8101/>，前端工作台默认位于 <http://localhost:9000/>。
 本地业务插件管理页为 <http://localhost:9000/pah/plugins>，原型边界与接口见
-[PahPLUGIN.md](docs/PahPLUGIN.md)，生产 DDL、dry-run、台账和恢复门禁见
-[PahMIGRATIONS.md](docs/PahMIGRATIONS.md)。
+[Pah业务插件契约.md](docs/Pah业务插件契约.md)，生产 DDL、dry-run、台账和恢复门禁见
+[Pah插件数据库迁移契约.md](docs/Pah插件数据库迁移契约.md)。统一登录、飞书/微信/手机号 provider、
+外部身份和登录方式策略的 Host 契约见 [Pah统一身份契约.md](docs/Pah统一身份契约.md)，分阶段
+迁移清单见 [Pah统一身份迁移清单.md](docs/Pah统一身份迁移清单.md)。
+
+隔离发布验收空库不得启用 `synchronize`、`initDB` 或 `initMenu`。Host-only 的版本化
+schema、只读 plan、事务 apply 与一次性验收管理员初始化见
+[Admin Host空库基线契约.md](docs/Admin Host空库基线契约.md)。
 
 构建与测试：
 

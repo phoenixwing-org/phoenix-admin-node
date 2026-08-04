@@ -58,6 +58,7 @@
     "dev": "rimraf src/index.ts && cool check && cross-env NODE_ENV=local mwtsc --cleanOutDir --watch --run @midwayjs/mock/app.js --keepalive",
     "test": "cross-env NODE_ENV=unittest jest",
     "test:ci": "cross-env NODE_ENV=unittest jest --runInBand --passWithNoTests",
+    "host:baseline": "node scripts/pah-host-baseline.cjs",
     "verify": "pnpm run lint && pnpm run test:ci && pnpm run build",
     "cov": "jest --coverage",
     "lint": "mwts check",
@@ -83,7 +84,9 @@
       "dist/modules/*/migrations/**/*.sql",
       "dist/modules/*/runtime/**/*.cjs",
       "dist/modules/pah/pah-host-schema.json",
-      "dist/modules/pah/schema/**/*.sql"
+      "dist/modules/pah/schema/**/*.sql",
+      "dist/modules/pah/host-baseline/**/*.json",
+      "dist/modules/pah/host-baseline/**/*.sql"
     ],
     "targets": [
       "node20-win-x64"

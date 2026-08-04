@@ -1,10 +1,10 @@
-# Phoenix Admin Host 业务插件原型
+# Phoenix Admin Host 业务插件契约
 
 ## 当前结论
 
 Phoenix Admin Host 已建立独立于 Cool `.cool` Hook 插件的业务插件注册表。它面向同时包含前端、后端、路由、权限、数据和任务贡献的业务模块，用于验证通用宿主契约。
 
-首版不读取或执行 manifest 的入口文件，不使用 `eval`，也不支持生产在线上传。插件入口统一声明为 `restart`，真正加载必须经过受控构建和受控重启流程。manifest format v2 的数据库迁移只接受编译期插件随包发布的受控 SQL，完整门禁见 [PahMIGRATIONS.md](PahMIGRATIONS.md)。
+首版不读取或执行 manifest 的入口文件，不使用 `eval`，也不支持生产在线上传。插件入口统一声明为 `restart`，真正加载必须经过受控构建和受控重启流程。manifest format v2 的数据库迁移只接受编译期插件随包发布的受控 SQL，完整门禁见 [Pah插件数据库迁移契约.md](Pah插件数据库迁移契约.md)。
 
 ## 持久化与接口
 
@@ -31,7 +31,7 @@ uploaded → verified → staged → migrated → installed → enabled
 - 首版只接受受控重启激活，不接受动态执行模式。
 - 卸载必须提供备份标识，并固定 `dataRetained=true`；当前没有永久清除接口。
 - 畸形 HTTP JSON 只形成校验错误，不应导致校验器运行时异常。
-- `hostReuse` 只能声明 Host 公开的身份、用户、部门、角色、菜单、字典、文件、任务、审计、参数和备份能力。
+- `hostReuse` 只能声明 Host 公开的身份、用户、部门、角色、菜单、字典、文件、任务、审计、参数和备份能力；`identity` 的公开契约与迁移状态见 [Pah统一身份契约.md](Pah统一身份契约.md)，声明不等于能力已经实现。
 - Host 只登记插件声明，不把任一产品的业务实现写死到后端。
 
 ## 导航、授权与迁移台账
@@ -43,6 +43,15 @@ uploaded → verified → staged → migrated → installed → enabled
 - 停用前按稳定贡献键保存角色授权，删除插件菜单并刷新权限缓存；再次启用时恢复授权。
 - manifest 声明有序 SQL 制品；Host 执行器校验 checksum，在同一数据库事务内执行待办 DDL 并写入 `pah_plugin_migration_record`。客户端不能提交批次或伪造 `applied`。
 - 开发 `synchronize`、fixture、seed/reset 与生产 migration 严格分离；生产执行必须具备 dry-run、可信备份及已演练恢复路径。
+
+## 字典治理与补全
+
+- `dict_info.enabled` 是启用/停用二态的唯一真源；不再并列增加含义重复的 `status`。业务字典读取默认只返回启用项，管理列表仍可查看全部。
+- `tags` 是规范化的简单字符串数组，不建立标签关联表；`core` 表示 Host 必须保护的协议值，`ownerModuleId` 表示插件管理边界。
+- 普通 Cool 字典 CRUD 不能设置或接管 `core`、`ownerModuleId`。核心项仅允许调整显示名称和备注；插件受管项不能修改稳定 value、类型、核心标识或所有者，也不能通过普通 CRUD 删除。
+- Pah manifest 可为字典项声明 `tags`、`enabled` 和可定制字段。`GET /admin/pah/plugin/dictionary-plan` 只生成计划；Host 管理员以计划指纹确认后，`POST /admin/pah/plugin/dictionary-reconcile` 在 `SERIALIZABLE` 事务中补齐缺失项和治理元数据，并写审计台账。
+- 系统“数据管理 → 字典维护”只执行幂等 reconcile，不执行 DDL，不覆盖管理员自定义名称、排序、额外标签或未知字典项。再次 dry-run 应为零变更；编辑和停用仍回到 Cool 字典管理页。
+- Host schema `0002-dictionary-governance.sql` 负责新增治理列和索引；必须先完成 dry-run、可信备份与隔离 PostgreSQL 恢复演练，再在受控发布窗口执行。普通页面按钮不得执行 `ALTER TABLE`。
 
 ## 本地验收
 
