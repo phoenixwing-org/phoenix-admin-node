@@ -649,6 +649,67 @@
                 ]
             },
             {
+                "name": "字典维护",
+                "router": "/pah/dictionary-maintenance",
+                "perms": null,
+                "type": 1,
+                "icon": "icon-dict",
+                "orderNum": 4,
+                "viewPath": "modules/pah/views/dictionary-maintenance.vue",
+                "keepAlive": true,
+                "isShow": true,
+                "childMenus": [
+                    {
+                        "name": "插件列表",
+                        "router": null,
+                        "perms": "pah:plugin:list",
+                        "type": 2,
+                        "icon": null,
+                        "orderNum": 0,
+                        "viewPath": null,
+                        "keepAlive": true,
+                        "isShow": true,
+                        "childMenus": []
+                    },
+                    {
+                        "name": "字典补全计划",
+                        "router": null,
+                        "perms": "pah:plugin:dictionaryPlan",
+                        "type": 2,
+                        "icon": null,
+                        "orderNum": 0,
+                        "viewPath": null,
+                        "keepAlive": true,
+                        "isShow": true,
+                        "childMenus": []
+                    },
+                    {
+                        "name": "执行字典补全",
+                        "router": null,
+                        "perms": "pah:plugin:dictionaryReconcile",
+                        "type": 2,
+                        "icon": null,
+                        "orderNum": 0,
+                        "viewPath": null,
+                        "keepAlive": true,
+                        "isShow": true,
+                        "childMenus": []
+                    },
+                    {
+                        "name": "字典补全台账",
+                        "router": null,
+                        "perms": "pah:plugin:dictionaryRecords",
+                        "type": 2,
+                        "icon": null,
+                        "orderNum": 0,
+                        "viewPath": null,
+                        "keepAlive": true,
+                        "isShow": true,
+                        "childMenus": []
+                    }
+                ]
+            },
+            {
                 "name": "数据回收站",
                 "router": "/recycle/data",
                 "perms": null,
@@ -733,7 +794,7 @@
         "orderNum": 11,
         "viewPath": null,
         "keepAlive": true,
-        "isShow": true,
+        "isShow": false,
         "childMenus": [
             {
                 "name": "用户列表",

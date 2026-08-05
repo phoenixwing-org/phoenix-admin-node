@@ -1,4 +1,4 @@
-# Pah 命名约定
+# Pah 命名规范
 
 `Pah` 表示 Phoenix Admin Host。新增宿主代码统一使用这一前缀，不再引入 `Pan` 或 `Pav`；`Pnw` 只属于 Phoenix Wing 的公开 API。
 

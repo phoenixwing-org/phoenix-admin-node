@@ -7,8 +7,10 @@ package-lock.json
 yarn.lock
 coverage/
 dist/
+src/index.ts
 .idea/
 run/
+.runtime/
 build/
 .DS_Store
 launch.json

@@ -1,0 +1,15 @@
+{
+  "formatVersion": 1,
+  "moduleId": "example-plugin",
+  "version": "0.1.0",
+  "runtimeArtifacts": [
+    {
+      "id": "example-node-runtime",
+      "runtime": "node",
+      "format": "commonjs",
+      "path": "runtime/example-runtime.cjs",
+      "size": 142,
+      "sha256": "1c4313868c5eca2db4c43cfd6e4935d335f2a9d55fdd847fb3ec796f14da9df9"
+    }
+  ]
+}

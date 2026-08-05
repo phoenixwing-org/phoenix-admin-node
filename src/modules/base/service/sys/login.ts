@@ -55,53 +55,47 @@ export class BaseSysLoginService extends BaseService {
     const checkV = await this.captchaCheck(captchaId, verifyCode);
     if (checkV) {
       const user = await this.baseSysUserEntity.findOneBy({ username });
-      // 校验用户
-      if (user) {
-        // 校验用户状态及密码
-        if (user.status === 0 || user.password !== md5(password)) {
-          throw new CoolCommException('账户或密码不正确~');
-        }
-      } else {
+      // 校验用户状态及密码
+      if (!user || user.status === 0 || user.password !== md5(password)) {
         throw new CoolCommException('账户或密码不正确~');
       }
-      // 校验角色
-      const roleIds = await this.baseSysRoleService.getByUser(user.id);
-      if (_.isEmpty(roleIds)) {
-        throw new CoolCommException('该用户未设置任何角色，无法登录~');
-      }
-
-      // 生成token
-      const { expire, refreshExpire } = this.coolConfig.jwt.token;
-      const result = {
-        expire,
-        token: await this.generateToken(user, roleIds, expire),
-        refreshExpire,
-        refreshToken: await this.generateToken(
-          user,
-          roleIds,
-          refreshExpire,
-          true
-        ),
-      };
-
-      // 将用户相关信息保存到缓存
-      const perms = await this.baseSysMenuService.getPerms(roleIds);
-      const departments = await this.baseSysDepartmentService.getByRoleIds(
-        roleIds,
-        user.username === 'admin'
-      );
-      await this.midwayCache.set(`admin:department:${user.id}`, departments);
-      await this.midwayCache.set(`admin:perms:${user.id}`, perms);
-      await this.midwayCache.set(`admin:token:${user.id}`, result.token);
-      await this.midwayCache.set(
-        `admin:token:refresh:${user.id}`,
-        result.token
-      );
-
-      return result;
+      return this.issueLoginSession(user);
     } else {
       throw new CoolCommException('验证码不正确');
     }
+  }
+
+  private async issueLoginSession(user: BaseSysUserEntity) {
+    const roleIds = await this.baseSysRoleService.getByUser(user.id);
+    if (_.isEmpty(roleIds)) {
+      throw new CoolCommException('该用户未设置任何角色，无法登录~');
+    }
+    const { expire, refreshExpire } = this.coolConfig.jwt.token;
+    const result = {
+      expire,
+      token: await this.generateToken(user, roleIds, expire),
+      refreshExpire,
+      refreshToken: await this.generateToken(
+        user,
+        roleIds,
+        refreshExpire,
+        true
+      ),
+    };
+
+    const perms = await this.baseSysMenuService.getPerms(roleIds);
+    const departments = await this.baseSysDepartmentService.getByRoleIds(
+      roleIds,
+      user.username === 'admin'
+    );
+    await this.midwayCache.set(`admin:department:${user.id}`, departments);
+    await this.midwayCache.set(`admin:perms:${user.id}`, perms);
+    await this.midwayCache.set(`admin:token:${user.id}`, result.token);
+    await this.midwayCache.set(
+      `admin:token:refresh:${user.id}`,
+      result.refreshToken
+    );
+    return result;
   }
 
   /**

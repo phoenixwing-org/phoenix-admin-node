@@ -17,7 +17,7 @@ import { DictInfoService } from '../../service/info';
   entity: DictInfoEntity,
   service: DictInfoService,
   listQueryOp: {
-    fieldEq: ['typeId'],
+    fieldEq: ['typeId', 'enabled', 'core', 'ownerModuleId'],
     keyWordLikeFields: ['name'],
     addOrderBy: {
       createTime: 'ASC',

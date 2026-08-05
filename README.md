@@ -1,6 +1,8 @@
 # Phoenix Admin Node
 
-Phoenix Admin Host 的 Node.js 后端宿主。仓库以 Cool Admin Midway `8.x` 为固定基线，逐步承载统一登录、用户、部门、系统角色、菜单、系统能力与审计。
+Phoenix Admin Host 的 Node.js 后端宿主。仓库以 Cool Admin Midway `8.x` 为固定基线，承载用户、部门、系统角色、菜单、系统能力与审计。
+
+Phoenix Admin Node 采用独立产品版本线，当前版本为 `0.2.0`；Cool Admin `8.x` 仅表示上游代码兼容基线，不作为 Phoenix 产品版本。当前发布范围见 [0.2.0 发布说明](docs/releases/0.2.0.md)。
 
 > 本仓库是 PhoenixWing 维护的 MIT 分叉，不是 Cool Admin 官方发行物。原 Cool Admin 版权、MIT 许可和 Git 历史完整保留。
 
@@ -8,19 +10,19 @@ Phoenix Admin Host 的 Node.js 后端宿主。仓库以 Cool Admin Midway `8.x` 
 
 - 保留上游 API、模块和权限行为，先建立可重复的 classic 基线。
 - Host 负责身份、组织、系统授权、菜单和统一审计。
-- Open Issue 与 Function 未来以编译期业务模块接入，并继续保留各自资源级授权。
-- 首期不实现运行时热插件、在线安装、热卸载或插件市场。
+- 已建立通用 `Pah` 业务插件 manifest 注册表，可验证登记、安装、启停、迁移台账与默认保留数据的卸载流程。
+- 业务扩展按独立计划推进；本阶段不实现在线上传、运行时源码执行、热加载或插件市场。
 
-首个 Ribbon 版本复用现有 `base_sys_menu` 层级，不创建分组表。只有出现跨模块持久化布局、用户定制或独立生命周期需求后，才评审 `pah_` 前缀的 sidecar 表。
+工作台继续复用现有 `base_sys_menu` 层级，并通过 `pah_` sidecar 表保存跨模块分组、插件菜单贡献、角色授权快照和迁移台账。
 
 ## 仓库关系
 
-| 项目 | 地址/版本 |
-|---|---|
-| Phoenix 仓库 | <https://gitee.com/phoenixwing/phoenix-admin-node> |
+| 项目            | 地址/版本                                                |
+| --------------- | -------------------------------------------------------- |
+| Phoenix 仓库    | <https://gitee.com/phoenixwing/phoenix-admin-node>       |
 | Cool Admin 上游 | <https://gitee.com/cool-team-official/cool-admin-midway> |
-| 固定基线 | `8.x` / `e545ef6f3b0c08581e34bd3207ca57d851ccc3ae` |
-| 配套前端 | <https://gitee.com/phoenixwing/phoenix-admin-vue> |
+| 固定基线        | `8.x` / `e545ef6f3b0c08581e34bd3207ca57d851ccc3ae`       |
+| 配套前端        | <https://gitee.com/phoenixwing/phoenix-admin-vue>        |
 
 详细同步规则见 [UPSTREAM.md](UPSTREAM.md)。
 
@@ -50,6 +52,13 @@ pnpm dev
 ```
 
 后端欢迎页为 <http://localhost:8101/>，前端工作台默认位于 <http://localhost:9000/>。
+本地业务插件管理页为 <http://localhost:9000/phoenix/plugins>，原型边界与接口见
+[Pah业务插件契约.md](docs/Pah业务插件契约.md)，生产 DDL、dry-run、台账和恢复门禁见
+[Pah插件数据库迁移契约.md](docs/Pah插件数据库迁移契约.md)。
+
+隔离发布验收空库不得启用 `synchronize`、`initDB` 或 `initMenu`。Host-only 的版本化
+schema、只读 plan、事务 apply 与一次性验收管理员初始化见
+[Admin Host空库基线契约.md](docs/Admin Host空库基线契约.md)。
 
 构建与测试：
 

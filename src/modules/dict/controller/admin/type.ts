@@ -12,7 +12,8 @@ import { DictTypeService } from '../../service/type';
   entity: DictTypeEntity,
   service: DictTypeService,
   listQueryOp: {
-    keyWordLikeFields: ['name'],
+    fieldEq: ['ownerModuleId'],
+    keyWordLikeFields: ['name', 'key'],
   },
 })
 export class AdminDictTypeController extends BaseController {}

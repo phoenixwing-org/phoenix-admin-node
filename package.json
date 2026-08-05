@@ -1,6 +1,6 @@
 {
   "name": "phoenix-admin-node",
-  "version": "8.0.0-phoenix.0",
+  "version": "0.2.0",
   "packageManager": "pnpm@10.15.1",
   "description": "Phoenix Admin Host Node.js backend maintained from Cool Admin Midway 8.x",
   "private": true,
@@ -58,13 +58,15 @@
     "dev": "rimraf src/index.ts && cool check && cross-env NODE_ENV=local mwtsc --cleanOutDir --watch --run @midwayjs/mock/app.js --keepalive",
     "test": "cross-env NODE_ENV=unittest jest",
     "test:ci": "cross-env NODE_ENV=unittest jest --runInBand --passWithNoTests",
+    "host:baseline": "node scripts/pah-host-baseline.cjs",
+    "admin:clean-validation": "node scripts/phoenix-admin-clean-validation.mjs",
     "verify": "pnpm run lint && pnpm run test:ci && pnpm run build",
     "cov": "jest --coverage",
     "lint": "mwts check",
     "lint:fix": "mwts fix",
     "ci": "npm run cov",
-    "build": "cool entity && bundle && mwtsc --cleanOutDir",
-    "build:obfuscate": "cool entity && bundle && mwtsc --cleanOutDir && cool obfuscate",
+    "build": "cool entity && bundle && mwtsc --cleanOutDir && node scripts/copy-pah-plugin-artifacts.mjs",
+    "build:obfuscate": "cool entity && bundle && mwtsc --cleanOutDir && node scripts/copy-pah-plugin-artifacts.mjs && cool obfuscate",
     "pkg": "rimraf build && mkdir build && npm run build && pkg . -d > build/pkg.log",
     "pm2:start": "pm2 start ./bootstrap.js -i 1 --name phoenix-admin-node",
     "pm2:stop": "pm2 stop phoenix-admin-node & pm2 delete phoenix-admin-node"
@@ -78,7 +80,14 @@
     "assets": [
       "public/**/*",
       "typings/**/*",
-      "src/locales/**/*"
+      "src/locales/**/*",
+      "dist/modules/*/pah-plugin.artifacts.json",
+      "dist/modules/*/migrations/**/*.sql",
+      "dist/modules/*/runtime/**/*.cjs",
+      "dist/modules/pah/pah-host-schema.json",
+      "dist/modules/pah/schema/**/*.sql",
+      "dist/modules/pah/host-baseline/**/*.json",
+      "dist/modules/pah/host-baseline/**/*.sql"
     ],
     "targets": [
       "node20-win-x64"
