@@ -567,24 +567,9 @@ async function hostRowSummary(client, manifest) {
     );
     rows[relation] = result.rows[0].count;
   }
-  const identityRelations = [
-    'pah_external_identity',
-    'pah_external_bind_request',
-    'pah_oauth_login_attempt',
-    'pah_oauth_login_ticket',
-  ];
-  const identityResult = await client.query(
-    `SELECT relname AS name
-       FROM pg_catalog.pg_class
-      WHERE relnamespace = 'public'::regnamespace
-        AND relname = ANY($1::text[])
-      ORDER BY relname`,
-    [identityRelations]
-  );
   return {
     allTablesEmpty: Object.values(rows).every(count => count === 0),
     rowCounts: rows,
-    identityRelationsPresent: identityResult.rows.map(row => row.name),
   };
 }
 

@@ -18,7 +18,7 @@ describe('Pah Host schema 制品', () => {
       expect.objectContaining({
         formatVersion: 1,
         schemaId: 'pah-host',
-        version: 3,
+        version: 2,
       })
     );
     expect(descriptor.migrations.map(item => item.path).sort()).toEqual(
@@ -30,26 +30,6 @@ describe('Pah Host schema 制品', () => {
         `sha256:${createHash('sha256').update(content).digest('hex')}`
       );
     }
-  });
-
-  it('外部身份迁移只保存身份映射和一次性凭证哈希', () => {
-    const sql = readFileSync(
-      path.join(pahRoot, 'schema/0003-external-identity.sql'),
-      'utf8'
-    );
-
-    expect(sql).toContain('CREATE TABLE IF NOT EXISTS pah_external_identity');
-    expect(sql).toContain(
-      'CREATE TABLE IF NOT EXISTS pah_external_bind_request'
-    );
-    expect(sql).toContain('CREATE TABLE IF NOT EXISTS pah_oauth_login_attempt');
-    expect(sql).toContain('CREATE TABLE IF NOT EXISTS pah_oauth_login_ticket');
-    expect(sql).toContain('UQ_pah_external_identity_subject');
-    expect(sql).toContain('UQ_pah_oauth_login_attempt_state');
-    expect(sql).toContain('UQ_pah_oauth_login_ticket_hash');
-    expect(sql).toContain('REFERENCES base_sys_user(id) ON DELETE RESTRICT');
-    expect(sql).toContain('incompatible definitions');
-    expect(sql).not.toMatch(/access[_ ]?token|refresh[_ ]?token/i);
   });
 
   it('字典治理迁移声明 enabled/tags/core/owner 并校验索引定义', () => {

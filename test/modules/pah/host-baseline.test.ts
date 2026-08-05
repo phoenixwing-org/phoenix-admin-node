@@ -70,10 +70,6 @@ describe('Admin Host 空库基线', () => {
     expect(sql).toContain('CREATE UNIQUE INDEX "UQ_dict_info_type_value"');
     expect(sql).toContain('CREATE INDEX IF NOT EXISTS "IDX_dict_info_enabled"');
     expect(sql).toContain('CREATE INDEX IF NOT EXISTS "IDX_dict_info_tags"');
-    expect(sql).not.toContain('pah_external_identity');
-    expect(sql).not.toContain('pah_external_bind_request');
-    expect(sql).not.toContain('pah_oauth_login_attempt');
-    expect(sql).not.toContain('pah_oauth_login_ticket');
   });
 
   it('制品字节被修改后 fail-closed', () => {
