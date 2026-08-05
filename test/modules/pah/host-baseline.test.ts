@@ -1,4 +1,5 @@
 import { execFileSync } from 'child_process';
+import { createHash } from 'crypto';
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import * as path from 'path';
@@ -163,7 +164,19 @@ describe('Admin Host 空库基线', () => {
         PAH_HOST_BASELINE_ADMIN_USERNAME: 'release-admin',
         PAH_HOST_BASELINE_ADMIN_PASSWORD: 'short',
       })
-    ).toThrow('12 至 128');
+    ).toThrow('12 至 20');
+    expect(() =>
+      baseline.adminInput({
+        PAH_HOST_BASELINE_ADMIN_USERNAME: 'admin-name-over-limit',
+        PAH_HOST_BASELINE_ADMIN_PASSWORD: 'one-time-password',
+      })
+    ).toThrow('用户名缺失');
+    expect(() =>
+      baseline.adminInput({
+        PAH_HOST_BASELINE_ADMIN_USERNAME: 'release-admin',
+        PAH_HOST_BASELINE_ADMIN_PASSWORD: 'password-over-twenty-characters',
+      })
+    ).toThrow('12 至 20');
     const admin = baseline.adminInput({
       PAH_HOST_BASELINE_ADMIN_USERNAME: 'release-admin',
       PAH_HOST_BASELINE_ADMIN_PASSWORD: 'one-time-password',
@@ -197,5 +210,52 @@ describe('Admin Host 空库基线', () => {
     expect(sql).toContain('$2');
     expect(sql).toContain('$3');
     expect(sql).not.toContain('one-time-password');
+  });
+
+  it('管理员重置输入服从登录页 20 字符边界，确认文本绑定三项摘要', () => {
+    expect(() => baseline.resetAdminInput({})).toThrow('当前用户名');
+    expect(() =>
+      baseline.resetAdminInput({
+        PAH_HOST_BASELINE_ADMIN_CURRENT_USERNAME: 'release-admin-old',
+        PAH_HOST_BASELINE_ADMIN_NEW_USERNAME: 'admin',
+        PAH_HOST_BASELINE_ADMIN_NEW_PASSWORD: 'short',
+      })
+    ).toThrow('12 至 20');
+    expect(() =>
+      baseline.resetAdminInput({
+        PAH_HOST_BASELINE_ADMIN_CURRENT_USERNAME: 'same-admin',
+        PAH_HOST_BASELINE_ADMIN_NEW_USERNAME: 'same-admin',
+        PAH_HOST_BASELINE_ADMIN_NEW_PASSWORD: 'one-time-password',
+      })
+    ).toThrow('必须不同');
+    expect(
+      baseline.resetAdminInput({
+        PAH_HOST_BASELINE_ADMIN_CURRENT_USERNAME:
+          'legacy-admin-name-over-ui-limit',
+        PAH_HOST_BASELINE_ADMIN_NEW_USERNAME: 'admin',
+        PAH_HOST_BASELINE_ADMIN_NEW_PASSWORD: 'one-time-password',
+      }).currentUsername
+    ).toBe('legacy-admin-name-over-ui-limit');
+
+    const reset = baseline.resetAdminInput({
+      PAH_HOST_BASELINE_ADMIN_CURRENT_USERNAME: 'release-admin-old',
+      PAH_HOST_BASELINE_ADMIN_NEW_USERNAME: 'admin',
+      PAH_HOST_BASELINE_ADMIN_NEW_PASSWORD: 'one-time-password',
+    });
+    const confirmation = baseline.adminResetConfirmation(
+      manifest,
+      'fixture_release_validation',
+      reset
+    );
+    expect(confirmation).toMatch(
+      /^reset-release-validation-admin:fixture_release_validation:v1:(?:[a-f0-9]{12}:){2}[a-f0-9]{12}$/
+    );
+    const summarySegments = confirmation.split(':').slice(-3);
+    expect(summarySegments).not.toContain(reset.currentUsername);
+    expect(summarySegments).not.toContain(reset.newUsername);
+    expect(confirmation).not.toContain(reset.newPassword);
+    expect(confirmation).not.toContain(
+      createHash('md5').update(reset.newPassword).digest('hex')
+    );
   });
 });

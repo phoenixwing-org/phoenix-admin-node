@@ -108,7 +108,7 @@ Host 仓不提交业务插件目录或产品路径。构建流水线挂载的业
 
 ## dry-run、安装与升级
 
-`GET /admin/pah/plugin/migration-plan?moduleId=...` 是只读 dry-run。它验证注册版本、目录边界、声明/制品一一对应、checksum、排序和既有台账，返回每项 `pending` 或 `applied`，但不执行 SQL。成功计划带有绑定模块/版本的 15 分钟一次性 `planId`；过期、重复使用、绑定不符或执行前台账发生变化都会拒绝。
+`GET /admin/phoenix/plugin/migration-plan?moduleId=...` 是只读 dry-run。它验证注册版本、目录边界、声明/制品一一对应、checksum、排序和既有台账，返回每项 `pending` 或 `applied`，但不执行 SQL。成功计划带有绑定模块/版本的 15 分钟一次性 `planId`；过期、重复使用、绑定不符或执行前台账发生变化都会拒绝。
 
 包含 DDL 的插件不能通过普通 HTTP `install` 直接安装。受控发布编排必须依次完成：
 

@@ -1,12 +1,14 @@
-import { Body, Get, Inject, Post, Provide, Query } from '@midwayjs/core';
+import { Body, Files, Get, Inject, Post, Provide, Query } from '@midwayjs/core';
 import { BaseController, CoolController } from '@cool-midway/core';
 import { PahPluginInstallationEntity } from '../../entity/plugin';
 import { PahPluginManifest } from '../../interface/plugin';
 import { PahPluginService } from '../../service/plugin';
+import { PahPluginPackageService } from '../../service/package';
 
 /** Phoenix 业务插件管理。 */
 @Provide()
 @CoolController({
+  prefix: '/admin/phoenix/plugin',
   api: ['info', 'list', 'page'],
   entity: PahPluginInstallationEntity,
   service: PahPluginService,
@@ -18,6 +20,50 @@ import { PahPluginService } from '../../service/plugin';
 export class PahPluginController extends BaseController {
   @Inject()
   pahPluginService: PahPluginService;
+
+  @Inject()
+  pahPluginPackageService: PahPluginPackageService;
+
+  @Post('/package', { summary: '本地校验并装配 .phoenix.cool 插件包' })
+  async package(@Files() files) {
+    return this.ok(
+      await this.pahPluginPackageService.installLocalPackage(files?.[0])
+    );
+  }
+
+  @Post('/local-backup', { summary: '创建并恢复演练本地插件可信备份' })
+  async localBackup(@Body('moduleId') moduleId: string) {
+    return this.ok(
+      await this.pahPluginPackageService.createLocalBackup(moduleId)
+    );
+  }
+
+  @Get('/local-runtime-status', {
+    summary: '检查本地插件 Node 运行制品是否已随 API 重启加载',
+  })
+  async localRuntimeStatus(@Query('moduleId') moduleId: string) {
+    return this.ok(
+      await this.pahPluginPackageService.localRuntimeStatus(moduleId)
+    );
+  }
+
+  @Post('/local-controlled-install', {
+    summary: '使用服务端计划与可信备份执行本地受控安装',
+  })
+  async localControlledInstall(@Body('moduleId') moduleId: string) {
+    return this.ok(
+      await this.pahPluginPackageService.controlledInstallLocal(moduleId)
+    );
+  }
+
+  @Post('/local-controlled-uninstall', {
+    summary: '创建可信备份后卸载本地插件并保留数据',
+  })
+  async localControlledUninstall(@Body('moduleId') moduleId: string) {
+    return this.ok(
+      await this.pahPluginPackageService.controlledUninstallLocal(moduleId)
+    );
+  }
 
   @Post('/register', { summary: '登记并验证插件 manifest' })
   async register(@Body('manifest') manifest: PahPluginManifest) {

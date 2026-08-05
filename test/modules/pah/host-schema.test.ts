@@ -69,6 +69,23 @@ describe('Pah Host schema 制品', () => {
     expect(sql).toContain('RAISE EXCEPTION');
   });
 
+  it('干净安装在 Cool 初始化后等幂应用经过校验的 Host schema', () => {
+    const installer = readFileSync(
+      path.resolve(__dirname, '../../../scripts/phoenix-admin-clean-validation.mjs'),
+      'utf8'
+    );
+
+    expect(installer).toContain("schemaId !== 'pah-host'");
+    expect(installer).toContain("/^schema\\/[0-9a-z-]+\\.sql$/u");
+    expect(installer).toContain("createHash('sha256').update(sql)");
+    expect(installer).toContain('BEGIN ISOLATION LEVEL SERIALIZABLE');
+    expect(installer).toContain('pg_advisory_xact_lock');
+    expect(installer).toContain('await applyPahHostSchema(options);');
+    expect(installer.indexOf('await applyPahHostSchema(options);')).toBeLessThan(
+      installer.indexOf("PAH_DB_SYNCHRONIZE: 'false'")
+    );
+  });
+
   it('字典唯一索引拒绝重复与同名冒牌定义，且创建 reconcile ledger', () => {
     const sql = readFileSync(
       path.join(pahRoot, 'schema/0001-dictionary-reconcile.sql'),

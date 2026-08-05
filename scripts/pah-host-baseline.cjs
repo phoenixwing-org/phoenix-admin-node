@@ -413,27 +413,69 @@ function adminInput(env = process.env) {
   const password = env.PAH_HOST_BASELINE_ADMIN_PASSWORD;
   if (
     !username ||
-    username.length > 100 ||
+    username.length > 20 ||
     !/^[A-Za-z0-9._@-]+$/u.test(username)
   ) {
     throw new BaselineError(
       'ADMIN_USERNAME_REQUIRED',
-      '验收管理员用户名缺失或不合法'
+      '验收管理员用户名缺失或不合法，长度必须为 1 至 20 个字符'
     );
   }
-  if (!password || password.length < 12 || password.length > 128) {
+  if (!password || password.length < 12 || password.length > 20) {
     throw new BaselineError(
       'ADMIN_PASSWORD_REQUIRED',
-      '验收管理员一次性密码必须为 12 至 128 个字符'
+      '验收管理员一次性密码必须为 12 至 20 个字符'
     );
   }
   return { username, password };
+}
+
+function resetAdminInput(env = process.env) {
+  const currentUsername = env.PAH_HOST_BASELINE_ADMIN_CURRENT_USERNAME;
+  const newUsername = env.PAH_HOST_BASELINE_ADMIN_NEW_USERNAME;
+  const newPassword = env.PAH_HOST_BASELINE_ADMIN_NEW_PASSWORD;
+  for (const [value, label, maxLength] of [
+    [currentUsername, '当前用户名', 100],
+    [newUsername, '新用户名', 20],
+  ]) {
+    if (
+      !value ||
+      value.length > maxLength ||
+      !/^[A-Za-z0-9._@-]+$/u.test(value)
+    ) {
+      throw new BaselineError(
+        'ADMIN_RESET_USERNAME_REQUIRED',
+        `${label}缺失或不合法，长度必须为 1 至 ${maxLength} 个字符`
+      );
+    }
+  }
+  if (currentUsername === newUsername) {
+    throw new BaselineError(
+      'ADMIN_RESET_USERNAME_UNCHANGED',
+      '当前用户名与新用户名必须不同，以保留一次性重置守卫'
+    );
+  }
+  if (!newPassword || newPassword.length < 12 || newPassword.length > 20) {
+    throw new BaselineError(
+      'ADMIN_RESET_PASSWORD_REQUIRED',
+      '验收管理员新密码必须为 12 至 20 个字符'
+    );
+  }
+  return { currentUsername, newUsername, newPassword };
 }
 
 function adminConfirmation(manifest, database, username) {
   return `seed-release-validation-admin:${database}:v${
     manifest.version
   }:${sha256(username).slice(0, 12)}`;
+}
+
+function adminResetConfirmation(manifest, database, reset) {
+  return `reset-release-validation-admin:${database}:v${manifest.version}:${sha256(
+    reset.currentUsername
+  ).slice(0, 12)}:${sha256(reset.newUsername).slice(0, 12)}:${sha256(
+    reset.newPassword
+  ).slice(0, 12)}`;
 }
 
 async function tableRowsAreEmpty(client, requiredRelations) {
@@ -459,6 +501,62 @@ async function pluginLedgerSummary(client) {
        (SELECT COUNT(*)::integer FROM pah_dictionary_reconcile_record) AS "dictionaryReconciliations"`
   );
   return result.rows[0];
+}
+
+async function readAdminResetState(
+  client,
+  currentUsername,
+  newUsername,
+  lockUser = false
+) {
+  const user = await client.query(
+    `SELECT id, username, password,
+            "passwordV" AS "passwordVersion",
+            "departmentId" AS "departmentId"
+       FROM base_sys_user
+      WHERE id = 1${lockUser ? ' FOR UPDATE' : ''}`
+  );
+  const relations = (
+    await client.query(
+      `SELECT
+         (SELECT COUNT(*)::integer FROM base_sys_department) AS departments,
+         (SELECT COUNT(*)::integer FROM base_sys_role) AS roles,
+         (SELECT COUNT(*)::integer FROM base_sys_user) AS users,
+         (SELECT COUNT(*)::integer FROM base_sys_user_role) AS "userRoles",
+         (SELECT COUNT(*)::integer FROM base_sys_department WHERE id = 1) AS "departmentOne",
+         (SELECT COUNT(*)::integer FROM base_sys_role WHERE id = 1) AS "roleOne",
+         (SELECT COUNT(*)::integer FROM base_sys_user WHERE id = 1) AS "userOne",
+         (SELECT COUNT(*)::integer
+            FROM base_sys_user_role
+           WHERE id = 1 AND "userId" = 1 AND "roleId" = 1) AS "userRoleOne"`
+    )
+  ).rows[0];
+  const targetConflict = await client.query(
+    'SELECT id FROM base_sys_user WHERE username = $1 AND id <> 1 LIMIT 1',
+    [newUsername]
+  );
+  const pluginLedger = await pluginLedgerSummary(client);
+  const adminUser = user.rows[0];
+  const adminRelationsReady =
+    user.rowCount === 1 &&
+    Object.values(relations).every(count => count === 1) &&
+    adminUser.departmentId === 1 &&
+    Number.isInteger(adminUser.passwordVersion);
+  return {
+    user: adminUser,
+    adminRelations: {
+      departments: relations.departments,
+      roles: relations.roles,
+      users: relations.users,
+      userRoles: relations.userRoles,
+    },
+    adminRelationsReady,
+    currentUsernameMatches:
+      user.rowCount === 1 && adminUser.username === currentUsername,
+    targetUsernameAvailable: targetConflict.rowCount === 0,
+    pluginLedger,
+    pluginLedgerEmpty: Object.values(pluginLedger).every(value => value === 0),
+  };
 }
 
 async function hostRowSummary(client, manifest) {
@@ -709,9 +807,164 @@ async function seedAdmin(manifest, config, admin) {
   });
 }
 
+async function resetAdminPlan(manifest, config, reset) {
+  return withDatabase(manifest, config, async (client, identity) => {
+    const classification = await classifyDatabase(client, manifest);
+    const state =
+      classification.state === 'baseline-ready'
+        ? await readAdminResetState(
+            client,
+            reset.currentUsername,
+            reset.newUsername
+          )
+        : undefined;
+    const safeToReset =
+      state?.adminRelationsReady === true &&
+      state.currentUsernameMatches &&
+      state.targetUsernameAvailable &&
+      state.pluginLedgerEmpty;
+    return {
+      action: safeToReset ? 'reset-admin' : 'reject',
+      baselineId: manifest.baselineId,
+      baselineVersion: manifest.version,
+      sourceCommit: manifest.sourceCommit,
+      environmentKind: config.environmentKind,
+      databaseName: config.database,
+      serverAddress: identity.serverAddress,
+      postgresMajor: identity.postgresMajor,
+      databaseState: classification.state,
+      adminRelations: state?.adminRelations,
+      adminRelationsReady: state?.adminRelationsReady ?? false,
+      currentUsernameMatches: state?.currentUsernameMatches ?? false,
+      targetUsernameAvailable: state?.targetUsernameAvailable ?? false,
+      pluginLedger: state?.pluginLedger,
+      confirmation: safeToReset
+        ? adminResetConfirmation(manifest, config.database, reset)
+        : undefined,
+    };
+  });
+}
+
+async function resetAdmin(manifest, config, reset) {
+  const expectedConfirmation = adminResetConfirmation(
+    manifest,
+    config.database,
+    reset
+  );
+  if (config.confirmation !== expectedConfirmation) {
+    throw new BaselineError(
+      'CONFIRMATION_REQUIRED',
+      `确认文本必须为 ${expectedConfirmation}`
+    );
+  }
+  return withDatabase(manifest, config, async (client, identity) => {
+    await client.query('BEGIN ISOLATION LEVEL SERIALIZABLE');
+    try {
+      await client.query(
+        'SELECT pg_advisory_xact_lock(hashtext($1), $2::integer)',
+        [`${manifest.baselineId}:admin-reset`, manifest.version]
+      );
+      const classification = await classifyDatabase(client, manifest);
+      if (classification.state !== 'baseline-ready') {
+        throw new BaselineError(
+          'ADMIN_RESET_DENIED',
+          '验收管理员重置只允许精确 baseline-ready 数据库'
+        );
+      }
+      const before = await readAdminResetState(
+        client,
+        reset.currentUsername,
+        reset.newUsername,
+        true
+      );
+      if (
+        !before.adminRelationsReady ||
+        !before.currentUsernameMatches ||
+        !before.targetUsernameAvailable ||
+        !before.pluginLedgerEmpty
+      ) {
+        throw new BaselineError(
+          'ADMIN_RESET_DENIED',
+          '验收管理员当前身份、必要关系或插件台账不满足重置条件'
+        );
+      }
+      const previousPasswordVersion = before.user.passwordVersion;
+      const passwordHash = createHash('md5')
+        .update(reset.newPassword)
+        .digest('hex');
+      const timestamp = new Date().toISOString().replace('T', ' ').slice(0, 19);
+      const updated = await client.query(
+        `UPDATE base_sys_user
+            SET username = $1,
+                password = $2,
+                "passwordV" = "passwordV" + 1,
+                "updateTime" = $3
+          WHERE id = 1
+            AND username = $4
+            AND "passwordV" = $5
+        RETURNING id`,
+        [
+          reset.newUsername,
+          passwordHash,
+          timestamp,
+          reset.currentUsername,
+          previousPasswordVersion,
+        ]
+      );
+      const after = await readAdminResetState(
+        client,
+        reset.newUsername,
+        reset.currentUsername,
+        true
+      );
+      if (
+        updated.rowCount !== 1 ||
+        !after.adminRelationsReady ||
+        !after.currentUsernameMatches ||
+        !after.targetUsernameAvailable ||
+        !after.pluginLedgerEmpty ||
+        after.user.password !== passwordHash ||
+        after.user.passwordVersion !== previousPasswordVersion + 1
+      ) {
+        throw new BaselineError(
+          'ADMIN_RESET_VERIFICATION_FAILED',
+          '验收管理员重置提交前验证失败'
+        );
+      }
+      await client.query('COMMIT');
+      return {
+        action: 'reset-admin',
+        baselineId: manifest.baselineId,
+        baselineVersion: manifest.version,
+        sourceCommit: manifest.sourceCommit,
+        environmentKind: config.environmentKind,
+        databaseName: config.database,
+        serverAddress: identity.serverAddress,
+        postgresMajor: identity.postgresMajor,
+        userId: 1,
+        passwordVersion: after.user.passwordVersion,
+        updated: true,
+        adminRelations: after.adminRelations,
+        pluginLedger: after.pluginLedger,
+      };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    }
+  });
+}
+
 function usage() {
   return {
-    commands: ['plan', 'apply', 'verify', 'seed-admin-plan', 'seed-admin'],
+    commands: [
+      'plan',
+      'apply',
+      'verify',
+      'seed-admin-plan',
+      'seed-admin',
+      'reset-admin-plan',
+      'reset-admin',
+    ],
     requiredEnvironment: [
       'PAH_HOST_BASELINE_ENVIRONMENT=release-validation',
       'PAH_HOST_BASELINE_DB_HOST=127.0.0.1',
@@ -720,10 +973,13 @@ function usage() {
       'PAH_HOST_BASELINE_DB_DATABASE=<exact>',
       'PAH_HOST_BASELINE_ALLOWED_DATABASE=<same exact>',
       'PAH_HOST_BASELINE_SOURCE_REPOSITORY=<Git repo containing sourceCommit>',
+      'PAH_HOST_BASELINE_ADMIN_CURRENT_USERNAME=<current-local-admin>',
+      'PAH_HOST_BASELINE_ADMIN_NEW_USERNAME=<new-local-admin>',
     ],
     secretEnvironment: [
       'PAH_HOST_BASELINE_DB_PASSWORD',
       'PAH_HOST_BASELINE_ADMIN_PASSWORD',
+      'PAH_HOST_BASELINE_ADMIN_NEW_PASSWORD',
     ],
   };
 }
@@ -758,6 +1014,12 @@ async function main(argv = process.argv.slice(2), env = process.env) {
   if (command === 'seed-admin') {
     return seedAdmin(manifest, config, adminInput(env));
   }
+  if (command === 'reset-admin-plan') {
+    return resetAdminPlan(manifest, config, resetAdminInput(env));
+  }
+  if (command === 'reset-admin') {
+    return resetAdmin(manifest, config, resetAdminInput(env));
+  }
   throw new BaselineError('UNKNOWN_COMMAND', `未知命令：${command}`);
 }
 
@@ -783,12 +1045,14 @@ module.exports = {
   BaselineError,
   adminConfirmation,
   adminInput,
+  adminResetConfirmation,
   classifyDatabase,
   expectedShapeMatches,
   extractCreatedRelations,
   loadAndVerifyManifest,
   main,
   readConfig,
+  resetAdminInput,
   schemaConfirmation,
   sha256,
   verifySourceRepository,

@@ -9,7 +9,7 @@ Phoenix Admin Host 已建立独立于 Cool `.cool` Hook 插件的业务插件注
 ## 持久化与接口
 
 - 安装记录表：`pah_plugin_installation`。
-- 控制器前缀：`/admin/pah/plugin`。
+- 控制器前缀：`/admin/phoenix/plugin`。
 - 查询：`list`、`page`、`info`、`enabled`。
 - 操作：`register`、`migration-plan`、`install`、`enable`、`disable`、`uninstall`。
 
@@ -49,14 +49,14 @@ uploaded → verified → staged → migrated → installed → enabled
 - `dict_info.enabled` 是启用/停用二态的唯一真源；不再并列增加含义重复的 `status`。业务字典读取默认只返回启用项，管理列表仍可查看全部。
 - `tags` 是规范化的简单字符串数组，不建立标签关联表；`core` 表示 Host 必须保护的协议值，`ownerModuleId` 表示插件管理边界。
 - 普通 Cool 字典 CRUD 不能设置或接管 `core`、`ownerModuleId`。核心项仅允许调整显示名称和备注；插件受管项不能修改稳定 value、类型、核心标识或所有者，也不能通过普通 CRUD 删除。
-- Pah manifest 可为字典项声明 `tags`、`enabled` 和可定制字段。`GET /admin/pah/plugin/dictionary-plan` 只生成计划；Host 管理员以计划指纹确认后，`POST /admin/pah/plugin/dictionary-reconcile` 在 `SERIALIZABLE` 事务中补齐缺失项和治理元数据，并写审计台账。
+- Pah manifest 可为字典项声明 `tags`、`enabled` 和可定制字段。`GET /admin/phoenix/plugin/dictionary-plan` 只生成计划；Host 管理员以计划指纹确认后，`POST /admin/phoenix/plugin/dictionary-reconcile` 在 `SERIALIZABLE` 事务中补齐缺失项和治理元数据，并写审计台账。
 - 系统“数据管理 → 字典维护”只执行幂等 reconcile，不执行 DDL，不覆盖管理员自定义名称、排序、额外标签或未知字典项。再次 dry-run 应为零变更；编辑和停用仍回到 Cool 字典管理页。
 - Host schema `0002-dictionary-governance.sql` 负责新增治理列和索引；必须先完成 dry-run、可信备份与隔离 PostgreSQL 恢复演练，再在受控发布窗口执行。普通页面按钮不得执行 `ALTER TABLE`。
 
 ## 本地验收
 
 1. 启动 PostgreSQL 和 `phoenix-admin-node`，本地配置会用 TypeORM `synchronize` 创建注册表。
-2. 启动 `phoenix-admin-vue`，访问 <http://localhost:9000/pah/plugins>。
+2. 启动 `phoenix-admin-vue`，访问 <http://localhost:9000/phoenix/plugins>。
 3. 对包含 DDL 的插件先查看只读迁移计划；本地验证不得把 `synchronize` 自动建表当成 applied migration。
 4. 无 DDL 插件可依次执行登记、安装、启用、停用、卸载；DDL 插件使用受控发布编排。
 5. 验证最终状态为 `uninstalled`、`dataRetained=true`，页面列出保留表和备份标识。

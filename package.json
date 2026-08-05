@@ -59,6 +59,7 @@
     "test": "cross-env NODE_ENV=unittest jest",
     "test:ci": "cross-env NODE_ENV=unittest jest --runInBand --passWithNoTests",
     "host:baseline": "node scripts/pah-host-baseline.cjs",
+    "admin:clean-validation": "node scripts/phoenix-admin-clean-validation.mjs",
     "verify": "pnpm run lint && pnpm run test:ci && pnpm run build",
     "cov": "jest --coverage",
     "lint": "mwts check",

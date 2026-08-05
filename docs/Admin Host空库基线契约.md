@@ -61,7 +61,8 @@ pnpm run host:baseline -- verify
 ## 一次性验收管理员
 
 schema 与登录 seed 分开。没有默认用户名、默认口令或固定 hash；manifest、SQL、输出和日志
-都不保存明文或 hash。只有刚完成 baseline 且所有 29 表仍为空时才允许 seed：
+都不保存明文或密码 hash。用户名和一次性密码都不得超过登录页的 20 字符上限，密码至少
+12 字符。只有刚完成 baseline 且所有 29 表仍为空时才允许 seed：
 
 ```shell
 export PAH_HOST_BASELINE_ADMIN_USERNAME='<one-time-local-admin>'
@@ -74,6 +75,29 @@ pnpm run host:baseline -- seed-admin
 seed 使用冻结 Host `login.ts` 相同的 MD5 密码比较算法，只在进程内计算 hash；安全输出仅含
 `userId=1`、用户名 SHA-256 摘要和 `created=true`。已存在任何 Host 行、缺少显式环境变量、
 非本机、非 release-validation 或来源不匹配都会拒绝。
+
+## 受控重置验收管理员
+
+如果一次性凭据不满足登录 UI 契约，只能在尚未安装插件、仍为精确 baseline-ready 的本机
+release-validation 数据库内执行一次性“改用户名并换密码”。当前用户名允许逐字匹配旧版
+seed 曾接受的 1 至 100 个字符，新用户名必须为 1 至 20 个字符且与当前值不同，新密码为
+12 至 20 个字符；没有任何默认值：
+
+```shell
+export PAH_HOST_BASELINE_ADMIN_CURRENT_USERNAME='<current-local-admin>'
+export PAH_HOST_BASELINE_ADMIN_NEW_USERNAME='<new-local-admin>'
+export PAH_HOST_BASELINE_ADMIN_NEW_PASSWORD='<new-one-time-password>'
+pnpm run host:baseline -- reset-admin-plan
+export PAH_HOST_BASELINE_CONFIRMATION='<confirmation-from-reset-admin-plan>'
+pnpm run host:baseline -- reset-admin
+```
+
+plan 只读核对 29 表结构、`id=1` 唯一用户、当前用户名逐字匹配、部门/角色/用户/用户角色四项
+关系各一行、目标用户名无冲突且插件/Pah 台账全零。confirmation 绑定数据库、baseline 版本、
+当前用户名、新用户名和新密码的 SHA-256 摘要；不会单独输出新密码或数据库保存的 MD5。
+apply 在 serializable transaction、advisory lock 和 `SELECT ... FOR UPDATE` 下再次核对，只更新
+`base_sys_user.id=1` 的 `username`、`password`、`passwordV+1` 与 `updateTime`。提交前复核新值、
+四项关系与台账；重复使用旧当前用户名会 fail-closed。
 
 ## Hub 交接
 
