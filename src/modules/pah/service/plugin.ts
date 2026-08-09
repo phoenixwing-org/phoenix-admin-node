@@ -144,7 +144,7 @@ export class PahPluginService extends BaseService {
   async installCompiled(
     moduleId: string,
     planId: string,
-    backupProof: PahMigrationBackupProof
+    backupProof?: PahMigrationBackupProof
   ) {
     return this.installPrepared(
       await this.getRequired(moduleId),
@@ -217,6 +217,20 @@ export class PahPluginService extends BaseService {
       retainedTables: next.manifest.dataOwnership.tables,
       purgedTables: [],
     };
+  }
+
+  /** 放弃尚未安装的本机制品；不触碰业务表、迁移台账或历史管理员分组。 */
+  async discardVerifiedPackage(moduleId: string) {
+    this.requireHostAdmin();
+    const info = await this.getRequired(moduleId);
+    if (info.state !== 'verified') {
+      throw new CoolCommException(
+        `只有已验证且尚未安装的插件包可以清理，当前状态：${info.state}`
+      );
+    }
+    return this.transition(info, 'uninstalled', {
+      dataRetained: true,
+    });
   }
 
   async enabled() {

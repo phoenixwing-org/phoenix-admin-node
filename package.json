@@ -1,6 +1,6 @@
 {
   "name": "phoenix-admin-node",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "packageManager": "pnpm@10.15.1",
   "description": "Phoenix Admin Host Node.js backend maintained from Cool Admin Midway 8.x",
   "private": true,
@@ -56,6 +56,7 @@
   "scripts": {
     "start": "NODE_ENV=production node ./bootstrap.js",
     "dev": "rimraf src/index.ts && cool check && cross-env NODE_ENV=local mwtsc --cleanOutDir --watch --run @midwayjs/mock/app.js --keepalive",
+    "dev:plugin-installer": "pnpm run build && cross-env NODE_ENV=production PAH_LOCAL_PACKAGE_MODE=true PAH_DB_SYNCHRONIZE=false PAH_DB_INITIALIZE=false node bootstrap.js",
     "test": "cross-env NODE_ENV=unittest jest",
     "test:ci": "cross-env NODE_ENV=unittest jest --runInBand --passWithNoTests",
     "host:baseline": "node scripts/pah-host-baseline.cjs",

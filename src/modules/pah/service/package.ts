@@ -17,6 +17,7 @@ import {
   validatePahPluginManifest,
 } from '../interface/plugin';
 import { PahLocalPluginBackupService } from './local-backup';
+import { PahMigrationBackupProof } from './migration';
 import { PahPluginService } from './plugin';
 
 const PHOENIX_PACKAGE_SUFFIX = '.phoenix.cool';
@@ -250,23 +251,40 @@ export class PahPluginPackageService extends BaseService {
         `只有已验证插件可以受控安装，当前状态：${info.state}`
       );
     }
-    const proof = this.pahLocalPluginBackupService.latestProof(
-      info.moduleId,
-      info.version
-    );
     const plan = await this.pahPluginService.migrationPlan(info.moduleId);
+    let proof: PahMigrationBackupProof | undefined;
+    let backupCreated = false;
+    if (plan.backupRequired) {
+      try {
+        proof = this.pahLocalPluginBackupService.latestProof(
+          info.moduleId,
+          info.version
+        );
+      } catch {
+        const result =
+          await this.pahLocalPluginBackupService.createVerifiedBackup(
+            info.moduleId,
+            info.version
+          );
+        proof = result.proof;
+        backupCreated = true;
+      }
+    }
     const installation = await this.pahPluginService.installCompiled(
       info.moduleId,
       plan.planId,
       proof
     );
     this.logger.info(
-      `[phoenix-plugin] controlled install complete module=${info.moduleId} version=${info.version} backup=${proof.backupId}`
+      `[phoenix-plugin] controlled install complete module=${
+        info.moduleId
+      } version=${info.version} backup=${proof?.backupId ?? 'not-required'}`
     );
     return {
       moduleId: info.moduleId,
       version: info.version,
-      backupId: proof.backupId,
+      backupId: proof?.backupId,
+      backupCreated,
       appliedMigrations: plan.items.filter(item => item.state === 'pending')
         .length,
       installation,
@@ -294,6 +312,85 @@ export class PahPluginPackageService extends BaseService {
       `[phoenix-plugin] controlled uninstall complete module=${info.moduleId} backup=${backup.proof.backupId}`
     );
     return { backup: backup.backup, installation };
+  }
+
+  /**
+   * 放弃已验证但尚未安装的本地包。
+   *
+   * 先把 Node/Vue payload 移到 Host 外围的临时回收目录，再提交生命周期状态；
+   * 状态提交失败时恢复两个 payload，避免留下半清理装配。
+   */
+  async discardLocalPackage(moduleId: string) {
+    this.requireLocalPackageMode();
+    const info = await this.pahPluginService.getByModuleId(moduleId);
+    if (!info) throw new CoolCommException(`插件 ${moduleId} 尚未登记`);
+    if (info.state !== 'verified') {
+      throw new CoolCommException(
+        `只有已验证且尚未安装的插件包可以清理，当前状态：${info.state}`
+      );
+    }
+    if (!/^[a-z][a-z0-9-]*$/.test(info.moduleId)) {
+      throw new CoolCommException('插件模块 ID 不安全，拒绝清理本机装配');
+    }
+
+    const roots = resolveHostRoots();
+    const operationId = randomUUID();
+    const moved: Array<{
+      runtime: 'node' | 'vue';
+      target: string;
+      archived: string;
+    }> = [];
+    try {
+      for (const runtime of ['node', 'vue'] as const) {
+        const root = roots[`${runtime}Root`];
+        const target = path.join(root, 'src', 'modules', info.moduleId);
+        if (!existsSync(target)) continue;
+        const stat = lstatSync(target);
+        if (stat.isSymbolicLink() || !stat.isDirectory()) {
+          throw new CoolCommException(
+            `${runtime} Host 的 ${info.moduleId} 不是安装器管理的普通目录，拒绝清理`
+          );
+        }
+        const archived = path.join(
+          root,
+          '.runtime',
+          'phoenix-plugin-discard',
+          operationId,
+          info.moduleId
+        );
+        mkdirSync(path.dirname(archived), { recursive: true });
+        renameSync(target, archived);
+        moved.push({ runtime, target, archived });
+      }
+
+      const installation = await this.pahPluginService.discardVerifiedPackage(
+        info.moduleId
+      );
+      for (const item of moved) {
+        rmSync(item.archived, { recursive: true, force: true });
+      }
+      this.logger.info(
+        `[phoenix-plugin] verified package discarded module=${
+          info.moduleId
+        } version=${info.version} payloads=${
+          moved.map(item => item.runtime).join(',') || 'none'
+        }`
+      );
+      return {
+        moduleId: info.moduleId,
+        version: info.version,
+        removedPayloads: moved.map(item => item.runtime),
+        installation,
+      };
+    } catch (error) {
+      for (const item of moved.reverse()) {
+        if (existsSync(item.archived) && !existsSync(item.target)) {
+          mkdirSync(path.dirname(item.target), { recursive: true });
+          renameSync(item.archived, item.target);
+        }
+      }
+      throw error;
+    }
   }
 
   async installLocalPackage(file: UploadedFile) {
@@ -534,7 +631,11 @@ export class PahPluginPackageService extends BaseService {
   }
 
   private requireLocalPackageMode() {
-    if (process.env.NODE_ENV === 'production') {
+    const controlledInstallerMode =
+      process.env.PAH_LOCAL_PACKAGE_MODE === 'true' &&
+      process.env.PAH_DB_SYNCHRONIZE === 'false' &&
+      process.env.PAH_DB_INITIALIZE === 'false';
+    if (process.env.NODE_ENV === 'production' && !controlledInstallerMode) {
       throw new CoolCommException(
         '正式环境必须通过受控部署编排装配 Phoenix 插件包'
       );

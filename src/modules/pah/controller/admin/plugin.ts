@@ -48,7 +48,7 @@ export class PahPluginController extends BaseController {
   }
 
   @Post('/local-controlled-install', {
-    summary: '使用服务端计划与可信备份执行本地受控安装',
+    summary: '使用服务端计划并按需自动备份执行本地受控安装',
   })
   async localControlledInstall(@Body('moduleId') moduleId: string) {
     return this.ok(
@@ -62,6 +62,15 @@ export class PahPluginController extends BaseController {
   async localControlledUninstall(@Body('moduleId') moduleId: string) {
     return this.ok(
       await this.pahPluginPackageService.controlledUninstallLocal(moduleId)
+    );
+  }
+
+  @Post('/local-package-discard', {
+    summary: '清理已验证但尚未安装的本机 Node/Vue 插件装配',
+  })
+  async localPackageDiscard(@Body('moduleId') moduleId: string) {
+    return this.ok(
+      await this.pahPluginPackageService.discardLocalPackage(moduleId)
     );
   }
 

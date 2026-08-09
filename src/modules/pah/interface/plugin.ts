@@ -165,7 +165,7 @@ const transitions: Record<
   readonly PahPluginLifecycleState[]
 > = {
   uploaded: ['verified', 'rejected', 'failed'],
-  verified: ['staged', 'rejected', 'failed'],
+  verified: ['staged', 'uninstalled', 'rejected', 'failed'],
   staged: ['migrated', 'failed'],
   migrated: ['installed', 'failed'],
   installed: ['enabled', 'disabled', 'uninstalled', 'failed'],
