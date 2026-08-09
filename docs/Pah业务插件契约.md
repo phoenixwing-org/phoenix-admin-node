@@ -31,7 +31,7 @@ uploaded → verified → staged → migrated → installed → enabled
 - 首版只接受受控重启激活，不接受动态执行模式。
 - 卸载必须提供备份标识，并固定 `dataRetained=true`；当前没有永久清除接口。
 - 畸形 HTTP JSON 只形成校验错误，不应导致校验器运行时异常。
-- `hostReuse` 只能声明 Host 公开的用户、部门、角色、菜单、字典、文件、任务、审计、参数和备份能力；manifest 声明不等于 Host 已经实现或启用了对应能力。
+- `hostReuse` 只能声明 Host 公开的身份、用户、部门、角色、菜单、字典、文件、任务、审计、参数和备份能力；`identity` 的公开契约与迁移状态见 [Pah统一身份契约.md](Pah统一身份契约.md)，声明不等于能力已经实现。
 - Host 只登记插件声明，不把任一产品的业务实现写死到后端。
 
 ## 导航、授权与迁移台账

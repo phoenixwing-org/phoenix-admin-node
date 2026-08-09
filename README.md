@@ -1,6 +1,6 @@
 # Phoenix Admin Node
 
-Phoenix Admin Host 的 Node.js 后端宿主。仓库以 Cool Admin Midway `8.x` 为固定基线，承载用户、部门、系统角色、菜单、系统能力与审计。
+Phoenix Admin Host 的 Node.js 后端宿主。仓库以 Cool Admin Midway `8.x` 为固定基线，承载统一登录、用户、部门、系统角色、菜单、系统能力与审计。
 
 Phoenix Admin Node 采用独立产品版本线，当前版本为 `0.2.1`；Cool Admin `8.x` 仅表示上游代码兼容基线，不作为 Phoenix 产品版本。当前发布范围见 [0.2.1 发布说明](docs/releases/0.2.1.md)。
 
@@ -56,7 +56,9 @@ pnpm dev
 [Pah业务插件契约.md](docs/Pah业务插件契约.md)，生产 DDL、dry-run、台账和恢复门禁见
 [Pah插件数据库迁移契约.md](docs/Pah插件数据库迁移契约.md)。Windows 本地可信备份所需
 PostgreSQL CLI、配置入口与复检步骤见
-[Windows可信备份工具链.md](docs/Windows可信备份工具链.md)。
+[Windows可信备份工具链.md](docs/Windows可信备份工具链.md)。统一登录、飞书 Provider、
+外部身份绑定和登录策略见 [Pah统一身份契约.md](docs/Pah统一身份契约.md)，分阶段部署与
+回滚边界见 [Pah统一身份迁移清单.md](docs/Pah统一身份迁移清单.md)。
 
 隔离发布验收空库不得启用 `synchronize`、`initDB` 或 `initMenu`。Host-only 的版本化
 schema、只读 plan、事务 apply 与一次性验收管理员初始化见

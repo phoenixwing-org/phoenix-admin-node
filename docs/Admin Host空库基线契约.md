@@ -5,7 +5,7 @@
 `src/modules/pah/host-baseline/host-baseline.json` 是 Admin Host 空库基线的唯一清单。
 v1 绑定 Node Host `0d94cbfd3179ab327ffb35ec653cbf1869d13c1d`，包含该提交 tracked
 `src/entities.ts` 的 29 个 Host relation，以及同一提交的 Pah Host schema v2 字典治理。
-冻结清单不会自动吸收该提交之后新增的关系或迁移。
+它不包含之后新增的外部身份四表，也不执行 Pah Host identity 0003。
 
 运行时只读取清单内三份已版本化 SQL。TypeORM metadata 只用于一次性生成
 `0001-host-entities.sql` 候选，不参与 plan 或 apply，也不会调用 `synchronize`、`initDB`
