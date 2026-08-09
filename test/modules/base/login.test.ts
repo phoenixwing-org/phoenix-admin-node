@@ -1,4 +1,12 @@
+import * as md5 from 'md5';
 import { BaseSysLoginService } from '../../../src/modules/base/service/sys/login';
+
+const loginInput = {
+  username: 'operator',
+  password: 'one-time-password',
+  captchaId: 'captcha-id',
+  verifyCode: 1234,
+};
 
 function serviceFixture() {
   const service = new BaseSysLoginService();
@@ -8,6 +16,7 @@ function serviceFixture() {
         id: 7,
         username: 'operator',
         status: 1,
+        password: md5(loginInput.password),
         passwordV: 3,
       })),
     },
@@ -22,6 +31,7 @@ function serviceFixture() {
       },
     },
   });
+  jest.spyOn(service, 'captchaCheck').mockResolvedValue(true);
   jest
     .spyOn(service, 'generateToken')
     .mockResolvedValueOnce('admin-token')
@@ -29,9 +39,48 @@ function serviceFixture() {
   return service;
 }
 
-describe('Admin 多登录方式共用会话签发', () => {
-  it('外部身份只能通过 base_sys_user 与角色校验后签发 Admin JWT', async () => {
+describe('Admin 密码登录会话签发', () => {
+  it('校验用户和角色后签发并分别缓存访问令牌与刷新令牌', async () => {
     const service = serviceFixture();
+    await expect(service.login(loginInput)).resolves.toMatchObject({
+      token: 'admin-token',
+      refreshToken: 'refresh-token',
+    });
+    expect(service.baseSysMenuService.getPerms).toHaveBeenCalledWith([2]);
+    expect(service.midwayCache.set).toHaveBeenCalledWith(
+      'admin:token:7',
+      'admin-token'
+    );
+    expect(service.midwayCache.set).toHaveBeenCalledWith(
+      'admin:token:refresh:7',
+      'refresh-token'
+    );
+  });
+
+  it('禁用用户与无角色用户都拒绝，且不会签发令牌', async () => {
+    const disabled = serviceFixture();
+    (disabled.baseSysUserEntity.findOneBy as jest.Mock).mockResolvedValue({
+      id: 7,
+      username: 'operator',
+      status: 0,
+      password: md5(loginInput.password),
+    });
+    await expect(disabled.login(loginInput)).rejects.toThrow(
+      '账户或密码不正确'
+    );
+    expect(disabled.generateToken).not.toHaveBeenCalled();
+
+    const noRole = serviceFixture();
+    (noRole.baseSysRoleService.getByUser as jest.Mock).mockResolvedValue([]);
+    await expect(noRole.login(loginInput)).rejects.toThrow('未设置任何角色');
+    expect(noRole.generateToken).not.toHaveBeenCalled();
+  });
+});
+
+describe('Admin 外部身份共用会话签发', () => {
+  it('绑定用户通过状态和角色校验后签发同一种 Admin JWT', async () => {
+    const service = serviceFixture();
+
     await expect(service.loginByUserId(7)).resolves.toMatchObject({
       token: 'admin-token',
       refreshToken: 'refresh-token',
@@ -47,7 +96,7 @@ describe('Admin 多登录方式共用会话签发', () => {
     );
   });
 
-  it('禁用用户与无角色用户都拒绝，且不会签发 token', async () => {
+  it('禁用或没有角色的绑定用户不能由外部 Provider 绕过 Host 授权', async () => {
     const disabled = serviceFixture();
     (disabled.baseSysUserEntity.findOneBy as jest.Mock).mockResolvedValue({
       id: 7,

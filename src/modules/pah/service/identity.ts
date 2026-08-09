@@ -225,6 +225,20 @@ export class PahIdentityService {
       throw new PahIdentityFlowError('invalid_ticket', '缺少一次性登录票据');
     }
     const record = await this.consumeTicket(ticket);
+    const identity = await this.externalIdentityEntity.findOneBy({
+      id: record.identityId,
+    });
+    if (
+      !identity ||
+      identity.status !== 'active' ||
+      identity.userId !== record.userId
+    ) {
+      throw new PahIdentityFlowError(
+        'identity_revoked',
+        '外部身份不存在或已解除绑定',
+        record.returnTo
+      );
+    }
     const session = await this.baseSysLoginService.loginByUserId(record.userId);
     await this.externalIdentityEntity.update(record.identityId, {
       lastLoginAt: nowIso(),
@@ -313,6 +327,9 @@ export class PahIdentityService {
   }
 
   async listExternalIdentities(userId?: number) {
+    if (userId !== undefined && !Number.isInteger(userId)) {
+      throw new CoolCommException('后台用户不合法');
+    }
     return this.externalIdentityEntity.find({
       ...(Number.isInteger(userId) ? { where: { userId } } : {}),
       order: { id: 'DESC' },

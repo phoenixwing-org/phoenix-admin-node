@@ -262,6 +262,11 @@ describe('Pah 外部身份登录编排', () => {
         })),
       },
       externalIdentityEntity: {
+        findOneBy: jest.fn(async () => ({
+          id: 7,
+          userId: 9,
+          status: 'active',
+        })),
         update: jest.fn(async () => undefined),
       },
     });
@@ -281,6 +286,47 @@ describe('Pah 外部身份登录编排', () => {
       7,
       expect.objectContaining({ lastLoginAt: expect.any(String) })
     );
+  });
+
+  it('解绑或错配身份不能兑换已签发但尚未使用的 ticket', async () => {
+    const service = new PahIdentityService();
+    Object.assign(service, {
+      rateLimiter: { assert: jest.fn() },
+      baseSysLoginService: {
+        loginByUserId: jest.fn(async () => ({ token: 'must-not-issue' })),
+      },
+      externalIdentityEntity: {
+        findOneBy: jest.fn(async () => ({
+          id: 7,
+          userId: 9,
+          status: 'revoked',
+        })),
+        update: jest.fn(async () => undefined),
+      },
+    });
+    jest.spyOn(service as any, 'consumeTicket').mockResolvedValue({
+      userId: 9,
+      identityId: 7,
+      returnTo: '/dashboard',
+    });
+
+    await expect(
+      service.exchangeTicket('single-use-ticket')
+    ).rejects.toMatchObject({ code: 'identity_revoked' });
+    expect(service.baseSysLoginService.loginByUserId).not.toHaveBeenCalled();
+    expect(service.externalIdentityEntity.update).not.toHaveBeenCalled();
+  });
+
+  it('身份列表拒绝非法 userId，避免退化为全量查询', async () => {
+    const service = new PahIdentityService();
+    Object.assign(service, {
+      externalIdentityEntity: { find: jest.fn(async () => []) },
+    });
+
+    await expect(service.listExternalIdentities(Number.NaN)).rejects.toThrow(
+      '后台用户不合法'
+    );
+    expect(service.externalIdentityEntity.find).not.toHaveBeenCalled();
   });
 
   it('公开接口返回固定 flow error，回调配置错误时不二次抛错', async () => {

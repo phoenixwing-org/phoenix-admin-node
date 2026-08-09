@@ -18,7 +18,7 @@ OAuth、通用外部身份映射、管理员待审查绑定和一次性登录票
   token；access token 只在换票和读取身份的单次调用链内存活。
 - 飞书未启用、配置不全、回调地址不合法、租户不在白名单时 fail-closed；密码登录始终
   保持启用和默认，首期没有关闭密码的 API。
-- Host 只提供通用身份表和接口，不写 Open Issue、Function、BOM 等产品 ID 特例。
+- Host 只提供通用身份表和接口，不写任何业务产品 ID 特例。
 
 首期运行配置：
 
@@ -46,11 +46,11 @@ redirect URI 不允许 query、fragment 或 URL 内嵌用户名密码；Admin We
 ## 1. 结论与文档归属
 
 统一登录、外部身份、登录方式策略和待审查绑定属于 Phoenix Admin Host 的
-`identity` 公共能力，不属于 Open Issue、Function、BOM 等业务插件，也不属于
+`identity` 公共能力，不属于任何业务插件，也不属于
 Phoenix Wing。本文作为 Node 端权威契约放在 `phoenix-admin-node/docs`；Admin Vue
 只消费本文定义的公开接口和状态，不另建一份不同的协议真源。
 
-Open Issue 插件可以在 manifest 中声明 `hostReuse: ["identity"]`，但声明不等于
+业务插件可以在 manifest 中声明 `hostReuse: ["identity"]`，但声明不等于
 Host 已实现能力。Host 接口、数据模型、权限和审计未通过本文门禁前，插件不得继续
 签发独立 JWT，也不得把旧版飞书表复制进插件数据库。
 
@@ -58,7 +58,7 @@ Host 已实现能力。Host 接口、数据模型、权限和审计未通过本�
 
 ### 2.1 Legacy 金样本
 
-旧版仓库 `phoenix-open-issue` 的飞书登录已经过真实用户点检，可作为行为金样本：
+旧业务系统的飞书登录已经过真实用户点检，可作为行为金样本：
 
 | 类型                 | 精确 commit                                | 证据                                         |
 | -------------------- | ------------------------------------------ | -------------------------------------------- |
@@ -238,7 +238,7 @@ interface PahIdentityProvider {
 
 `accessToken` 只在单次服务端调用链内存活，不进入数据库、日志、响应、审计或备份。
 首期只有飞书 adapter，不引入动态 Provider registry；数据模型仍使用稳定 `provider` 字段，
-后续可以增量增加新 adapter。Host 不允许出现 Open Issue 等产品映射。
+后续可以增量增加新 adapter。Host 不允许出现业务产品映射。
 
 飞书作为首个 provider 迁移；微信必须先冻结网页 Admin Console 的具体 OAuth 类型，不能把
 现有小程序、公众号和 App 三个入口模糊合并。手机号不是 OAuth provider，应由独立的
@@ -261,7 +261,7 @@ interface PahIdentityProvider {
 
 ### 系统设置
 
-建议放在“管理 → 系统设置 → 登录方式”，而不是 Open Issue 设置：
+建议放在“管理 → 系统设置 → 登录方式”，而不是业务插件设置：
 
 - 多选启用方式、选择默认方式、显示 provider 配置就绪状态。
 - 保存前服务端再次校验至少一个 ready 方式与 break-glass 门禁。

@@ -2,7 +2,7 @@
 
 - 状态：首期 Node 最小飞书登录已实现；尚未执行生产 DDL 或 Admin Vue/真实飞书点检
 - 设计真源：[Pah 统一身份契约.md](Pah统一身份契约.md)
-- Legacy 金样本：`phoenix-open-issue@bca79cc62a9989b7e7544ab96b6291271722fd64`
+- Legacy 金样本：已冻结的旧业务系统飞书登录行为与用户点检证据
 
 迁移实施遵循仓库 `phoenix-ai-workspaces` 中的
 `plugin-migration/skills/migrate-phoenix-admin-plugin/SKILL.md`；本文只保存 Host
@@ -102,13 +102,13 @@
 - [ ] 密码 + 飞书的启用、配置不全、Provider 故障和故障回退全部通过。
 - [ ] 日志、Output、响应、数据库、备份和 production pack 敏感信息扫描为零。
 - [ ] 先在隔离 Host/数据库验证，再进入开发环境；不得覆盖当前 Issue/Function 任务现场。
-- [ ] 更新 Open Issue 帮助文本：只有 Host 能力真实接通后才显示飞书/登录方式说明。
+- [ ] 更新消费方帮助文本：只有 Host 能力真实接通后才显示飞书/登录方式说明。
 - [ ] 形成中文本地阶段提交；未获授权不 push、不发布、不打 tag。
 
 ## 明确不做
 
-- 不把 legacy 登录代码放回 Open Issue 插件。
-- 不从 Issue maintenance 复用权限执行 Host 身份管理。
+- 不把 legacy 登录代码放回业务插件。
+- 不从业务插件的维护能力复用权限执行 Host 身份管理。
 - 不把 Cool App 的微信、手机号用户静默转换为 Admin 用户。
 - 不自动按用户名、姓名、邮箱或手机号绑定旧身份。
 - 不保存 OAuth access/refresh token。
