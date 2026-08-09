@@ -65,11 +65,35 @@ export class BaseSysLoginService extends BaseService {
     }
   }
 
-  private async issueLoginSession(user: BaseSysUserEntity) {
+  /**
+   * 由已经完成 Host 身份校验的登录方式签发后台会话。
+   * 外部 Provider 只能传入绑定后的 base_sys_user.id，不能自行签发 JWT。
+   */
+  async loginByUserId(userId: number) {
+    const user = await this.baseSysUserEntity.findOneBy({ id: userId });
+    if (!user || user.status !== 1) {
+      throw new CoolCommException('绑定的后台账号不存在或已被禁用');
+    }
+    return this.issueLoginSession(user);
+  }
+
+  /** 绑定外部身份前校验后台用户是否具备真实登录条件。 */
+  async assertUserCanLogin(userId: number) {
+    const user = await this.baseSysUserEntity.findOneBy({ id: userId });
+    if (!user || user.status !== 1) {
+      throw new CoolCommException('目标后台账号不存在或已被禁用');
+    }
     const roleIds = await this.baseSysRoleService.getByUser(user.id);
     if (_.isEmpty(roleIds)) {
-      throw new CoolCommException('该用户未设置任何角色，无法登录~');
+      throw new CoolCommException('目标后台账号未设置任何角色，无法登录');
     }
+    return { user, roleIds };
+  }
+
+  private async issueLoginSession(user: BaseSysUserEntity) {
+    const loginContext = await this.assertUserCanLogin(user.id);
+    user = loginContext.user;
+    const { roleIds } = loginContext;
     const { expire, refreshExpire } = this.coolConfig.jwt.token;
     const result = {
       expire,

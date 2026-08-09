@@ -30,10 +30,12 @@ export class BaseLogMiddleware implements IMiddleware<Context, NextFunction> {
 
 const AUTH_SENSITIVE_FIELDS: Record<string, ReadonlySet<string>> = {
   '/admin/base/open/login': new Set(['password', 'captchaId', 'verifyCode']),
+  '/admin/base/open/oauth/feishu/callback': new Set(['state', 'code']),
+  '/admin/base/open/oauth/exchange-ticket': new Set(['ticket']),
   '/admin/base/open/refreshToken': new Set(['refreshToken']),
 };
 
-/** 保留认证动作审计，但禁止密码、验证码与刷新令牌落日志。 */
+/** 保留认证动作审计，但禁止凭据、OAuth code/state 和一次性票据落日志。 */
 export function sanitizeBaseLogParams(path: string, params: unknown) {
   const fields = AUTH_SENSITIVE_FIELDS[path];
   if (!fields || !params || typeof params !== 'object') return params;

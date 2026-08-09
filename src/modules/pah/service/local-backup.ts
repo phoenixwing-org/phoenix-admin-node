@@ -32,12 +32,36 @@ interface DatabaseConnection {
 
 interface PostgresTools {
   serverMajor: number;
-  binDirectory?: string;
+  source:
+    | 'configured-bin'
+    | 'individual-command'
+    | 'versioned-installation'
+    | 'PATH';
+  psql: string;
   pgDump: string;
   pgRestore: string;
   createDb: string;
   dropDb: string;
 }
+
+type PostgresToolName =
+  | 'psql'
+  | 'pg_dump'
+  | 'pg_restore'
+  | 'createdb'
+  | 'dropdb';
+
+const POSTGRES_TOOL_ENV: Record<PostgresToolName, string> = {
+  psql: 'PAH_PSQL_BIN',
+  pg_dump: 'PAH_PG_DUMP_BIN',
+  pg_restore: 'PAH_PG_RESTORE_BIN',
+  createdb: 'PAH_CREATEDB_BIN',
+  dropdb: 'PAH_DROPDB_BIN',
+};
+
+const POSTGRES_TOOL_NAMES = Object.keys(
+  POSTGRES_TOOL_ENV
+) as PostgresToolName[];
 
 function sha256(content: Buffer) {
   return createHash('sha256').update(content).digest('hex');
@@ -62,6 +86,8 @@ export class PahLocalPluginBackupService {
   backupGate: PahMigrationBackupGate;
 
   private readonly records = new Map<string, LocalBackupRecord>();
+
+  platform: NodeJS.Platform = process.platform;
 
   commandRunner = async (
     command: string,
@@ -108,6 +134,7 @@ export class PahLocalPluginBackupService {
       commandEnv
     );
 
+    let stage = '创建 PostgreSQL 自定义格式备份';
     try {
       await this.commandRunner(
         postgresTools.pgDump,
@@ -122,6 +149,7 @@ export class PahLocalPluginBackupService {
         ],
         { cwd: nodeRoot, env: commandEnv }
       );
+      stage = '校验 PostgreSQL 备份目录';
       await this.commandRunner(
         postgresTools.pgRestore,
         ['--list', backupPath],
@@ -130,12 +158,14 @@ export class PahLocalPluginBackupService {
           env: commandEnv,
         }
       );
+      stage = '创建临时恢复数据库';
       await this.commandRunner(
         postgresTools.createDb,
         [...connectionArgs, '--maintenance-db=postgres', restoreDatabase],
         { cwd: nodeRoot, env: commandEnv }
       );
       try {
+        stage = '执行临时数据库恢复演练';
         await this.commandRunner(
           postgresTools.pgRestore,
           [
@@ -150,6 +180,7 @@ export class PahLocalPluginBackupService {
           { cwd: nodeRoot, env: commandEnv }
         );
       } finally {
+        stage = '清理临时恢复数据库';
         await this.commandRunner(
           postgresTools.dropDb,
           [
@@ -161,12 +192,10 @@ export class PahLocalPluginBackupService {
           { cwd: nodeRoot, env: commandEnv }
         );
       }
-    } catch (error) {
+    } catch {
       await fs.rm(backupPath, { force: true });
       throw new CoolCommException(
-        `本地可信备份或恢复演练失败：${
-          error instanceof Error ? error.message : String(error)
-        }`
+        `本地可信备份或恢复演练失败（${stage}）；请检查 PostgreSQL 服务、权限和磁盘空间，未保留无效备份`
       );
     }
 
@@ -200,7 +229,7 @@ export class PahLocalPluginBackupService {
         createdAt,
         restoreVerifiedAt: record.restoreVerifiedAt,
         postgresMajor: postgresTools.serverMajor,
-        postgresBinDirectory: postgresTools.binDirectory,
+        postgresToolSource: postgresTools.source,
       },
     };
   }
@@ -251,11 +280,49 @@ export class PahLocalPluginBackupService {
     env: NodeJS.ProcessEnv
   ): Promise<PostgresTools> {
     const configuredServerMajor = process.env.PAH_POSTGRES_SERVER_MAJOR?.trim();
-    let serverMajor = Number(configuredServerMajor || 0);
-    if (!Number.isInteger(serverMajor) || serverMajor <= 0) {
-      const psql = process.env.PAH_PSQL_BIN || 'psql';
-      const result = await this.commandRunner(
-        psql,
+    const expectedServerMajor = configuredServerMajor
+      ? Number(configuredServerMajor)
+      : undefined;
+    if (
+      expectedServerMajor !== undefined &&
+      (!Number.isInteger(expectedServerMajor) || expectedServerMajor <= 0)
+    ) {
+      throw new CoolCommException(
+        'PostgreSQL CLI 前置检查失败：PAH_POSTGRES_SERVER_MAJOR 必须是正整数；未执行备份'
+      );
+    }
+
+    const configuredBinDirectory = process.env.PAH_POSTGRES_BIN?.trim();
+    if (configuredBinDirectory && !path.isAbsolute(configuredBinDirectory)) {
+      throw new CoolCommException(
+        'PostgreSQL CLI 前置检查失败：PAH_POSTGRES_BIN 必须是绝对路径；未执行备份'
+      );
+    }
+    if (configuredBinDirectory) {
+      const missingTools = await this.missingTools(configuredBinDirectory);
+      if (missingTools.length) {
+        throw new CoolCommException(
+          `PostgreSQL CLI 前置检查失败：PAH_POSTGRES_BIN 缺少 ${missingTools.join(
+            '、'
+          )}；未执行备份`
+        );
+      }
+    }
+
+    const initialPsql =
+      process.env.PAH_PSQL_BIN?.trim() ||
+      (configuredBinDirectory
+        ? path.join(configuredBinDirectory, this.executableName('psql'))
+        : this.executableName('psql'));
+    const versionCache = new Map<string, number>();
+    await this.postgresCliMajor('psql', initialPsql, cwd, env, versionCache);
+
+    let serverVersionResult: Awaited<
+      ReturnType<PahLocalPluginBackupService['commandRunner']>
+    >;
+    try {
+      serverVersionResult = await this.commandRunner(
+        initialPsql,
         [
           ...connectionArgs,
           '--dbname',
@@ -267,47 +334,135 @@ export class PahLocalPluginBackupService {
         ],
         { cwd, env }
       );
-      const serverVersionNumber = Number(String(result.stdout || '').trim());
-      serverMajor = Math.floor(serverVersionNumber / 10000);
-      if (!Number.isInteger(serverMajor) || serverMajor <= 0) {
-        throw new CoolCommException('无法识别 PostgreSQL 服务端主版本');
-      }
+    } catch {
+      throw new CoolCommException(
+        'PostgreSQL CLI 前置检查失败：psql 无法连接并读取服务端版本；请检查数据库连接参数与权限，未执行备份'
+      );
+    }
+    const serverVersionNumber = Number(
+      String(serverVersionResult.stdout || '').trim()
+    );
+    const serverMajor = Math.floor(serverVersionNumber / 10000);
+    if (!Number.isInteger(serverMajor) || serverMajor <= 0) {
+      throw new CoolCommException(
+        'PostgreSQL CLI 前置检查失败：无法识别 PostgreSQL 服务端主版本；未执行备份'
+      );
+    }
+    if (
+      expectedServerMajor !== undefined &&
+      expectedServerMajor !== serverMajor
+    ) {
+      throw new CoolCommException(
+        `PostgreSQL CLI 前置检查失败：配置的服务端主版本 ${expectedServerMajor} 与实际版本 ${serverMajor} 不一致；未执行备份`
+      );
     }
 
-    const configuredBinDirectory = process.env.PAH_POSTGRES_BIN?.trim();
     const candidates = [
-      configuredBinDirectory,
       `/opt/homebrew/opt/postgresql@${serverMajor}/bin`,
       `/usr/local/opt/postgresql@${serverMajor}/bin`,
       `/Library/PostgreSQL/${serverMajor}/bin`,
-    ].filter((item): item is string => Boolean(item));
+    ];
     let binDirectory: string | undefined;
-    for (const candidate of candidates) {
-      try {
-        await fs.access(path.join(candidate, 'pg_dump'));
-        await fs.access(path.join(candidate, 'pg_restore'));
-        await fs.access(path.join(candidate, 'createdb'));
-        await fs.access(path.join(candidate, 'dropdb'));
-        binDirectory = candidate;
-        break;
-      } catch {
-        if (configuredBinDirectory === candidate) {
-          throw new CoolCommException(
-            `PAH_POSTGRES_BIN 缺少完整 PostgreSQL 工具链：${candidate}`
-          );
+    if (configuredBinDirectory) {
+      binDirectory = configuredBinDirectory;
+    } else if (this.platform !== 'win32') {
+      for (const candidate of candidates) {
+        if (!(await this.missingTools(candidate)).length) {
+          binDirectory = candidate;
+          break;
         }
       }
     }
-    const command = (name: string, configured?: string) =>
-      configured || (binDirectory ? path.join(binDirectory, name) : name);
+    const configuredCommands = POSTGRES_TOOL_NAMES.filter(name =>
+      Boolean(process.env[POSTGRES_TOOL_ENV[name]]?.trim())
+    );
+    const command = (name: PostgresToolName) =>
+      process.env[POSTGRES_TOOL_ENV[name]]?.trim() ||
+      (binDirectory
+        ? path.join(binDirectory, this.executableName(name))
+        : this.executableName(name));
+    const commands = Object.fromEntries(
+      POSTGRES_TOOL_NAMES.map(name => [name, command(name)])
+    ) as Record<PostgresToolName, string>;
+
+    for (const name of POSTGRES_TOOL_NAMES) {
+      const clientMajor = await this.postgresCliMajor(
+        name,
+        commands[name],
+        cwd,
+        env,
+        versionCache
+      );
+      if (clientMajor !== serverMajor) {
+        throw new CoolCommException(
+          `PostgreSQL CLI 前置检查失败：${name} 主版本 ${clientMajor} 与服务端主版本 ${serverMajor} 不一致；未执行备份`
+        );
+      }
+    }
     return {
       serverMajor,
-      binDirectory,
-      pgDump: command('pg_dump', process.env.PAH_PG_DUMP_BIN),
-      pgRestore: command('pg_restore', process.env.PAH_PG_RESTORE_BIN),
-      createDb: command('createdb', process.env.PAH_CREATEDB_BIN),
-      dropDb: command('dropdb', process.env.PAH_DROPDB_BIN),
+      source: configuredCommands.length
+        ? 'individual-command'
+        : configuredBinDirectory
+        ? 'configured-bin'
+        : binDirectory
+        ? 'versioned-installation'
+        : 'PATH',
+      psql: commands.psql,
+      pgDump: commands.pg_dump,
+      pgRestore: commands.pg_restore,
+      createDb: commands.createdb,
+      dropDb: commands.dropdb,
     };
+  }
+
+  private executableName(name: PostgresToolName) {
+    return this.platform === 'win32' ? `${name}.exe` : name;
+  }
+
+  private async missingTools(binDirectory: string) {
+    const missingTools: PostgresToolName[] = [];
+    for (const name of POSTGRES_TOOL_NAMES) {
+      try {
+        await fs.access(path.join(binDirectory, this.executableName(name)));
+      } catch {
+        missingTools.push(name);
+      }
+    }
+    return missingTools;
+  }
+
+  private async postgresCliMajor(
+    name: PostgresToolName,
+    command: string,
+    cwd: string,
+    env: NodeJS.ProcessEnv,
+    cache: Map<string, number>
+  ) {
+    const cached = cache.get(command);
+    if (cached) return cached;
+    let result: Awaited<
+      ReturnType<PahLocalPluginBackupService['commandRunner']>
+    >;
+    try {
+      result = await this.commandRunner(command, ['--version'], { cwd, env });
+    } catch {
+      throw new CoolCommException(
+        `PostgreSQL CLI 前置检查失败：${name} 不可用；Windows 请设置 PAH_POSTGRES_BIN 为 PostgreSQL 安装目录下的 bin，或设置 ${POSTGRES_TOOL_ENV[name]}；未执行备份`
+      );
+    }
+    const output = `${String(result.stdout || '')} ${String(
+      result.stderr || ''
+    )}`;
+    const match = output.match(/\b(\d+)(?:\.\d+)?\b/u);
+    const major = match ? Number(match[1]) : 0;
+    if (!Number.isInteger(major) || major <= 0) {
+      throw new CoolCommException(
+        `PostgreSQL CLI 前置检查失败：无法识别 ${name} 的版本；未执行备份`
+      );
+    }
+    cache.set(command, major);
+    return major;
   }
 
   private localDatabaseConnection(): DatabaseConnection {

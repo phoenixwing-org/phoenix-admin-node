@@ -104,12 +104,12 @@ describe('非 root Pah endpoint 权限旅程', () => {
 
   it('显式授权的 REST endpoint 对普通用户放行', async () => {
     const { middleware } = middlewareFixture([
-      'GET /admin/phoenix-open-issue/issue/:id',
+      'GET /admin/example-plugin/item/:id',
     ]);
     const next = jest.fn().mockResolvedValue(undefined);
 
     await middleware.resolve()(
-      context('GET', '/admin/phoenix-open-issue/issue/issue-1'),
+      context('GET', '/admin/example-plugin/item/item-1'),
       next
     );
 
@@ -118,19 +118,19 @@ describe('非 root Pah endpoint 权限旅程', () => {
 
   it('同一路径未授权 method 与越界子路径都返回 403', async () => {
     const { middleware } = middlewareFixture([
-      'GET /admin/phoenix-open-issue/issue/:id',
+      'GET /admin/example-plugin/item/:id',
     ]);
     const next = jest.fn().mockResolvedValue(undefined);
 
     await expect(
       middleware.resolve()(
-        context('DELETE', '/admin/phoenix-open-issue/issue/issue-1'),
+        context('DELETE', '/admin/example-plugin/item/item-1'),
         next
       )
     ).rejects.toMatchObject({ statusCode: 403 });
     await expect(
       middleware.resolve()(
-        context('GET', '/admin/phoenix-open-issue/issue/issue-1/history'),
+        context('GET', '/admin/example-plugin/item/item-1/history'),
         next
       )
     ).rejects.toMatchObject({ statusCode: 403 });
@@ -143,7 +143,7 @@ describe('非 root Pah endpoint 权限旅程', () => {
 
     await expect(
       middleware.resolve()(
-        context('GET', '/admin/phoenix-open-issue/issue/issue-1'),
+        context('GET', '/admin/example-plugin/item/item-1'),
         next
       )
     ).rejects.toMatchObject({ statusCode: 403 });
@@ -152,7 +152,7 @@ describe('非 root Pah endpoint 权限旅程', () => {
 
   it('匿名请求返回 401', async () => {
     const { middleware, verify } = middlewareFixture([
-      'GET /admin/phoenix-open-issue/issue/:id',
+      'GET /admin/example-plugin/item/:id',
     ]);
     verify.mockImplementation(() => {
       throw new Error('missing token');
@@ -161,7 +161,7 @@ describe('非 root Pah endpoint 权限旅程', () => {
 
     await expect(
       middleware.resolve()(
-        context('GET', '/admin/phoenix-open-issue/issue/issue-1'),
+        context('GET', '/admin/example-plugin/item/item-1'),
         next
       )
     ).rejects.toMatchObject({ statusCode: 401 });
@@ -179,10 +179,40 @@ describe('非 root Pah endpoint 权限旅程', () => {
     const next = jest.fn().mockResolvedValue(undefined);
 
     await middleware.resolve()(
-      context('DELETE', '/admin/phoenix-open-issue/issue/issue-1'),
+      context('DELETE', '/admin/example-plugin/item/item-1'),
       next
     );
 
     expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it('身份管理接口保持 root 200、普通用户 403、匿名 401', async () => {
+    const endpoint = '/admin/pah/identity/bind-request/list';
+    const next = jest.fn().mockResolvedValue(undefined);
+
+    const root = middlewareFixture([]);
+    root.verify.mockReturnValue({
+      userId: 7,
+      username: 'admin',
+      passwordVersion: 3,
+      isRefresh: false,
+    } as any);
+    await root.middleware.resolve()(context('GET', endpoint), next);
+    expect(next).toHaveBeenCalledTimes(1);
+
+    jest.restoreAllMocks();
+    const operator = middlewareFixture([]);
+    await expect(
+      operator.middleware.resolve()(context('GET', endpoint), jest.fn())
+    ).rejects.toMatchObject({ statusCode: 403 });
+
+    jest.restoreAllMocks();
+    const anonymous = middlewareFixture([]);
+    anonymous.verify.mockImplementation(() => {
+      throw new Error('missing token');
+    });
+    await expect(
+      anonymous.middleware.resolve()(context('GET', endpoint), jest.fn())
+    ).rejects.toMatchObject({ statusCode: 401 });
   });
 });

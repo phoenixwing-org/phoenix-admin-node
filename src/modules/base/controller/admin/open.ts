@@ -1,4 +1,12 @@
-import { Provide, Body, Inject, Post, Get, Query } from '@midwayjs/core';
+import {
+  Provide,
+  Body,
+  Inject,
+  Post,
+  Get,
+  Query,
+  Config,
+} from '@midwayjs/core';
 import {
   CoolController,
   BaseController,
@@ -13,6 +21,12 @@ import { BaseSysLoginService } from '../../service/sys/login';
 import { BaseSysParamService } from '../../service/sys/param';
 import { Context } from '@midwayjs/koa';
 import { Validate } from '@midwayjs/validate';
+import { PahIdentityService } from '../../../pah/service/identity';
+import {
+  pahIdentityCallbackUrl,
+  PahIdentityConfig,
+  PahIdentityFlowError,
+} from '../../../pah/interface/identity';
 
 /**
  * 不需要登录的后台接口
@@ -32,6 +46,12 @@ export class BaseOpenController extends BaseController {
 
   @Inject()
   eps: CoolEps;
+
+  @Inject()
+  pahIdentityService: PahIdentityService;
+
+  @Config('module.pah.identity')
+  identityConfig: PahIdentityConfig;
 
   /**
    * 实体信息与路径
@@ -61,6 +81,95 @@ export class BaseOpenController extends BaseController {
   @Validate()
   async login(@Body() login: LoginDTO) {
     return this.ok(await this.baseSysLoginService.login(login));
+  }
+
+  /** 后台登录页只读能力；不返回 App Secret 或内部配置。 */
+  @CoolTag(TagTypes.IGNORE_TOKEN)
+  @Get('/login-policy', { summary: '后台登录方式与就绪状态' })
+  async loginPolicy() {
+    return this.ok(this.pahIdentityService.loginPolicy());
+  }
+
+  @CoolTag(TagTypes.IGNORE_TOKEN)
+  @Get('/oauth/feishu/start', { summary: '开始飞书后台登录' })
+  async startFeishuLogin(@Query('returnTo') returnTo?: string) {
+    try {
+      return this.ok(
+        await this.pahIdentityService.startFeishuLogin(returnTo, this.ctx.ip)
+      );
+    } catch (error) {
+      return this.identityFlowFailure(error);
+    }
+  }
+
+  @CoolTag(TagTypes.IGNORE_TOKEN)
+  @Get('/oauth/feishu/callback', { summary: '飞书后台登录回调' })
+  async feishuCallback(
+    @Query('state') state?: string,
+    @Query('code') code?: string,
+    @Query('error') error?: string
+  ) {
+    try {
+      const result = await this.pahIdentityService.completeFeishuCallback(
+        { state, code, error },
+        this.ctx.ip
+      );
+      const params: Record<string, string> = {
+        provider: result.provider,
+        status: result.status,
+        returnTo: result.returnTo,
+      };
+      if (result.status === 'authenticated') params.ticket = result.ticket;
+      if (result.status === 'pending') {
+        params.requestId = String(result.requestId);
+      }
+      this.ctx.redirect(
+        pahIdentityCallbackUrl(this.identityConfig.frontendOrigin, params)
+      );
+    } catch (caught) {
+      const flowError =
+        caught instanceof PahIdentityFlowError
+          ? caught
+          : new PahIdentityFlowError(
+              'provider_response_error',
+              '飞书登录未完成，请重新尝试'
+            );
+      try {
+        this.ctx.redirect(
+          pahIdentityCallbackUrl(this.identityConfig.frontendOrigin, {
+            provider: 'feishu',
+            error: flowError.code,
+            returnTo: flowError.returnTo,
+          })
+        );
+      } catch {
+        this.ctx.status = 503;
+        this.ctx.body = identityFlowFailureBody(
+          new PahIdentityFlowError(
+            'provider_misconfigured',
+            '后台登录回调地址未正确配置'
+          )
+        );
+      }
+    }
+  }
+
+  @CoolTag(TagTypes.IGNORE_TOKEN)
+  @Post('/oauth/exchange-ticket', { summary: '兑换飞书一次性登录票据' })
+  async exchangeFeishuTicket(@Body('ticket') ticket: string) {
+    try {
+      return this.ok(
+        await this.pahIdentityService.exchangeTicket(ticket, this.ctx.ip)
+      );
+    } catch (error) {
+      return this.identityFlowFailure(error);
+    }
+  }
+
+  private identityFlowFailure(error: unknown) {
+    if (!(error instanceof PahIdentityFlowError)) throw error;
+    this.ctx.status = identityFlowStatus(error);
+    return identityFlowFailureBody(error);
   }
 
   /**
@@ -95,4 +204,34 @@ export class BaseOpenController extends BaseController {
       };
     }
   }
+}
+
+function identityFlowStatus(error: PahIdentityFlowError) {
+  if (error.code === 'rate_limited') return 429;
+  if (
+    [
+      'provider_disabled',
+      'provider_misconfigured',
+      'provider_unavailable',
+    ].includes(error.code)
+  ) {
+    return 503;
+  }
+  if (
+    ['tenant_not_allowed', 'identity_pending', 'identity_revoked'].includes(
+      error.code
+    )
+  ) {
+    return 403;
+  }
+  if (error.code === 'expired_ticket') return 401;
+  return 400;
+}
+
+function identityFlowFailureBody(error: PahIdentityFlowError) {
+  return {
+    code: RESCODE.COMMFAIL,
+    message: error.message,
+    data: { error: error.code },
+  };
 }

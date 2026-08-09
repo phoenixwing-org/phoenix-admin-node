@@ -76,3 +76,39 @@ describe('Admin 密码登录会话签发', () => {
     expect(noRole.generateToken).not.toHaveBeenCalled();
   });
 });
+
+describe('Admin 外部身份共用会话签发', () => {
+  it('绑定用户通过状态和角色校验后签发同一种 Admin JWT', async () => {
+    const service = serviceFixture();
+
+    await expect(service.loginByUserId(7)).resolves.toMatchObject({
+      token: 'admin-token',
+      refreshToken: 'refresh-token',
+    });
+    expect(service.baseSysMenuService.getPerms).toHaveBeenCalledWith([2]);
+    expect(service.midwayCache.set).toHaveBeenCalledWith(
+      'admin:token:7',
+      'admin-token'
+    );
+    expect(service.midwayCache.set).toHaveBeenCalledWith(
+      'admin:token:refresh:7',
+      'refresh-token'
+    );
+  });
+
+  it('禁用或没有角色的绑定用户不能由外部 Provider 绕过 Host 授权', async () => {
+    const disabled = serviceFixture();
+    (disabled.baseSysUserEntity.findOneBy as jest.Mock).mockResolvedValue({
+      id: 7,
+      username: 'operator',
+      status: 0,
+    });
+    await expect(disabled.loginByUserId(7)).rejects.toThrow('已被禁用');
+    expect(disabled.generateToken).not.toHaveBeenCalled();
+
+    const noRole = serviceFixture();
+    (noRole.baseSysRoleService.getByUser as jest.Mock).mockResolvedValue([]);
+    await expect(noRole.loginByUserId(7)).rejects.toThrow('未设置任何角色');
+    expect(noRole.generateToken).not.toHaveBeenCalled();
+  });
+});

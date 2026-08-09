@@ -1,7 +1,7 @@
 import { sanitizeBaseLogParams } from '../../../src/modules/base/middleware/log';
 
 describe('后台认证请求日志脱敏', () => {
-  it('隐藏密码、验证码与 refresh token', () => {
+  it('隐藏密码、验证码、OAuth code/state、ticket 与 refresh token', () => {
     expect(
       sanitizeBaseLogParams('/admin/base/open/login', {
         username: 'operator',
@@ -15,6 +15,22 @@ describe('后台认证请求日志脱敏', () => {
       captchaId: '[REDACTED]',
       verifyCode: '[REDACTED]',
     });
+    expect(
+      sanitizeBaseLogParams('/admin/base/open/oauth/feishu/callback', {
+        state: 'state',
+        code: 'oauth-code',
+        error: 'access_denied',
+      })
+    ).toEqual({
+      state: '[REDACTED]',
+      code: '[REDACTED]',
+      error: 'access_denied',
+    });
+    expect(
+      sanitizeBaseLogParams('/admin/base/open/oauth/exchange-ticket', {
+        ticket: 'ticket',
+      })
+    ).toEqual({ ticket: '[REDACTED]' });
     expect(
       sanitizeBaseLogParams('/admin/base/open/refreshToken', {
         refreshToken: 'refresh-token',
