@@ -1,10 +1,11 @@
 import * as orm from '@midwayjs/typeorm';
 import {
   Configuration,
-  App,
+  CommonJSFileDetector,
   IMidwayApplication,
   Inject,
   ILogger,
+  MainApp,
   MidwayWebRouterService,
 } from '@midwayjs/core';
 import * as koa from '@midwayjs/koa';
@@ -22,6 +23,9 @@ import * as upload from '@midwayjs/upload';
 // import * as rpc from '@cool-midway/rpc';
 
 @Configuration({
+  detector: new CommonJSFileDetector({
+    conflictCheck: true,
+  }),
   imports: [
     // https://koajs.com/
     koa,
@@ -57,7 +61,7 @@ import * as upload from '@midwayjs/upload';
   ],
 })
 export class MainConfiguration {
-  @App()
+  @MainApp()
   app: IMidwayApplication;
 
   @Inject()

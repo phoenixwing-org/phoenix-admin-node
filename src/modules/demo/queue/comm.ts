@@ -1,13 +1,13 @@
 import { BaseCoolQueue, CoolQueue } from '@cool-midway/task';
 import { IMidwayApplication } from '@midwayjs/core';
-import { App } from '@midwayjs/core';
+import { MainApp } from '@midwayjs/core';
 
 /**
  * 普通队列
  */
 @CoolQueue()
 export class DemoCommQueue extends BaseCoolQueue {
-  @App()
+  @MainApp()
   app: IMidwayApplication;
 
   async data(job: any, done: any): Promise<void> {

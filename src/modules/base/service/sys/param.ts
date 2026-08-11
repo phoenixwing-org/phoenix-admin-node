@@ -54,9 +54,7 @@ export class BaseSysParamService extends BaseService {
     const info = await super.info(id, infoIgnoreProperty);
     try {
       info.data = JSON.parse(info.data.replace(/{/g, '[').replace(/}/g, ']'));
-    } catch (error) {
-      info.data = info.data;
-    }
+    } catch (error) {}
     return info;
   }
 

@@ -17,5 +17,4 @@ launch.json
 .tsbuildinfo
 .tsbuildinfo.*
 data/*
-pnpm-lock.yaml
 public/uploads/*

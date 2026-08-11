@@ -1,4 +1,4 @@
-import { ALL, Config, Middleware } from '@midwayjs/core';
+import { AllConfig, Config, Middleware } from '@midwayjs/core';
 import { NextFunction, Context } from '@midwayjs/koa';
 import { IMiddleware, Init, Inject } from '@midwayjs/core';
 import * as jwt from 'jsonwebtoken';
@@ -11,7 +11,7 @@ import { Utils } from '../../../comm/utils';
  */
 @Middleware()
 export class UserMiddleware implements IMiddleware<Context, NextFunction> {
-  @Config(ALL)
+  @AllConfig()
   coolConfig;
 
   @Inject()

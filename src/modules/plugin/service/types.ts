@@ -1,5 +1,5 @@
 import { BaseService } from '@cool-midway/core';
-import { App, IMidwayApplication, Inject, Provide } from '@midwayjs/core';
+import { MainApp, IMidwayApplication, Inject, Provide } from '@midwayjs/core';
 import { InjectEntityModel } from '@midwayjs/typeorm';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -14,7 +14,7 @@ import { PluginService } from './info';
  */
 @Provide()
 export class PluginTypesService extends BaseService {
-  @App()
+  @MainApp()
   app: IMidwayApplication;
 
   @InjectEntityModel(PluginInfoEntity)

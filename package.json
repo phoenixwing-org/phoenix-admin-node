@@ -1,24 +1,25 @@
 {
   "name": "cool-admin",
   "version": "8.0.0",
+  "packageManager": "pnpm@9.15.9",
   "description": "一个很酷的Ai快速开发框架",
   "private": true,
   "dependencies": {
     "@cool-midway/core": "^8.0.7",
     "@cool-midway/rpc": "^8.0.2",
     "@cool-midway/task": "^8.0.2",
-    "@midwayjs/bootstrap": "^3.20.3",
-    "@midwayjs/cache-manager": "^3.20.3",
-    "@midwayjs/core": "^3.20.3",
-    "@midwayjs/cron": "^3.20.3",
-    "@midwayjs/cross-domain": "^3.20.3",
-    "@midwayjs/info": "^3.20.3",
-    "@midwayjs/koa": "^3.20.3",
-    "@midwayjs/logger": "^3.4.2",
-    "@midwayjs/static-file": "^3.20.3",
-    "@midwayjs/typeorm": "^3.20.3",
-    "@midwayjs/upload": "^3.20.3",
-    "@midwayjs/validate": "^3.20.3",
+    "@midwayjs/bootstrap": "^4.2.1",
+    "@midwayjs/cache-manager": "^4.2.1",
+    "@midwayjs/core": "^4.2.1",
+    "@midwayjs/cron": "^4.2.1",
+    "@midwayjs/cross-domain": "^4.2.1",
+    "@midwayjs/info": "^4.2.1",
+    "@midwayjs/koa": "^4.2.1",
+    "@midwayjs/logger": "^4.1.0",
+    "@midwayjs/static-file": "^4.2.1",
+    "@midwayjs/typeorm": "^4.2.1",
+    "@midwayjs/upload": "^4.2.1",
+    "@midwayjs/validate": "^4.2.1",
     "adm-zip": "^0.5.16",
     "axios": "^1.8.4",
     "cron": "^4.1.3",
@@ -36,7 +37,7 @@
   },
   "devDependencies": {
     "@midwayjs/bundle-helper": "^1.3.0",
-    "@midwayjs/mock": "^3.20.3",
+    "@midwayjs/mock": "^4.2.1",
     "@types/jest": "^29.5.14",
     "@types/node": "22",
     "@yao-pkg/pkg": "^6.3.2",
@@ -45,16 +46,29 @@
     "mwts": "^1.3.0",
     "mwtsc": "^1.15.1",
     "rimraf": "^6.0.1",
+    "sqlite3": "^5.1.7",
     "ts-jest": "^29.3.0",
     "typescript": "~5.8.2"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "@cool-midway/core>@midwayjs/cache-manager": "^4.2.1"
+    },
+    "patchedDependencies": {
+      "@cool-midway/rpc@8.0.2": "patches/@cool-midway__rpc@8.0.2.patch",
+      "@cool-midway/core@8.0.8": "patches/@cool-midway__core@8.0.8.patch"
+    }
   },
   "scripts": {
     "start": "NODE_ENV=production node ./bootstrap.js",
-    "dev": "rimraf src/index.ts && cool check && cross-env NODE_ENV=local mwtsc --cleanOutDir --watch --run @midwayjs/mock/app.js --keepalive",
+    "dev": "rimraf src/index.ts && cool check && cross-env NODE_ENV=local mwtsc --cleanOutDir --watch --run ./scripts/dev-midway4.js --keepalive",
     "test": "cross-env NODE_ENV=unittest jest",
+    "test:midway4": "cross-env NODE_ENV=unittest node ./scripts/verify-midway4-runtime.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "verify:midway4": "npm run lint && npm run typecheck && npm run test && npm run build && npm run test:midway4",
     "cov": "jest --coverage",
     "lint": "mwts check",
     "lint:fix": "mwts fix",
