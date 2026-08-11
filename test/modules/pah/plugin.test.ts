@@ -332,7 +332,7 @@ describe('Pah 插件契约', () => {
     );
   });
 
-  it('HTTP 安装不能绕过 dry-run 与可信备份执行 DDL', async () => {
+  it('HTTP 安装不能绕过 dry-run 执行 DDL', async () => {
     const update = jest.fn();
     const service = new PahPluginService();
     Object.assign(service, {
@@ -349,7 +349,7 @@ describe('Pah 插件契约', () => {
     });
 
     await expect(service.install(MODULE_ID)).rejects.toThrow(
-      '包含 DDL 的插件必须经受控发布流程 dry-run、备份并安装'
+      '包含 DDL 的插件必须经受控发布流程 dry-run 并安装'
     );
     expect(update).not.toHaveBeenCalled();
   });
@@ -506,6 +506,11 @@ describe('Pah 菜单与角色贡献', () => {
         find: jest.fn().mockResolvedValue([{ userId: 9, roleId: 4 }]),
       },
       baseSysPermsService: { refreshPerms },
+      pahPublicLoginBrandingService: {
+        deactivateForLifecycle: jest
+          .fn()
+          .mockResolvedValue(async () => undefined),
+      },
     });
 
     await service.disable(MODULE_ID);
@@ -604,16 +609,14 @@ describe('Pah 通用 SQL 迁移执行器', () => {
       version: '0.1.0',
       rootDir,
     });
-    const backupGate = new PahMigrationBackupGate();
     const service = new PahPluginMigrationService();
     Object.assign(service, {
       compiledPluginRegistry: registry,
-      backupGate,
       pluginMigrationRecordEntity: {
         find: jest.fn().mockResolvedValue(records),
       },
     });
-    return { service, registry, backupGate };
+    return { service, registry };
   }
 
   function backupProof() {
@@ -957,23 +960,6 @@ describe('Pah 通用 SQL 迁移执行器', () => {
     expect(verifier).not.toHaveBeenCalled();
   });
 
-  it('默认无可信备份验证器时安全阻断生产 DDL', async () => {
-    const { service } = migrationService();
-    const plan = await service.dryRun({
-      moduleId: MODULE_ID,
-      version: '0.1.0',
-      manifest: manifest(),
-    } as PahPluginInstallationEntity);
-    const prepared = service.claimPlan(MODULE_ID, '0.1.0', plan.planId);
-
-    await expect(
-      service.executeClaimed(MODULE_ID, prepared, backupProof())
-    ).rejects.toThrow('尚未配置可信备份验证器，禁止执行生产插件 DDL');
-    expect(() => service.claimPlan(MODULE_ID, '0.1.0', plan.planId)).toThrow(
-      '迁移 dry-run 计划不存在、已过期或不匹配'
-    );
-  });
-
   it('事务内跳过已应用迁移、执行待办并由 Host 写台账', async () => {
     const appliedRecord = {
       moduleId: MODULE_ID,
@@ -982,9 +968,7 @@ describe('Pah 通用 SQL 迁移执行器', () => {
       checksum: MIGRATION_CHECKSUM,
       state: 'applied',
     };
-    const { service, backupGate } = migrationService([appliedRecord]);
-    const verifyBackup = jest.fn().mockResolvedValue(undefined);
-    backupGate.registerVerifier(verifyBackup);
+    const { service } = migrationService([appliedRecord]);
     const plan = await service.dryRun({
       moduleId: MODULE_ID,
       version: '0.1.0',
@@ -1020,16 +1004,7 @@ describe('Pah 通用 SQL 迁移执行器', () => {
       .spyOn(service, 'getOrmManager')
       .mockReturnValue({ transaction } as any);
 
-    const result = await service.executeClaimed(
-      MODULE_ID,
-      prepared,
-      backupProof()
-    );
-
-    expect(verifyBackup).toHaveBeenCalledWith(
-      backupProof(),
-      expect.objectContaining({ moduleId: MODULE_ID })
-    );
+    const result = await service.executeClaimed(MODULE_ID, prepared);
     expect(transaction).toHaveBeenCalledTimes(1);
     expect(query).toHaveBeenCalledTimes(1);
     expect(query).toHaveBeenCalledWith(SECOND_MIGRATION_SQL.toString('utf8'));
@@ -1057,8 +1032,7 @@ describe('Pah 通用 SQL 迁移执行器', () => {
   });
 
   it('dry-run 后台账变化会在事务锁内阻断执行', async () => {
-    const { service, backupGate } = migrationService();
-    backupGate.registerVerifier(jest.fn().mockResolvedValue(undefined));
+    const { service } = migrationService();
     const plan = await service.dryRun({
       moduleId: MODULE_ID,
       version: '0.1.0',
@@ -1096,15 +1070,14 @@ describe('Pah 通用 SQL 迁移执行器', () => {
       transaction: jest.fn(callback => callback(manager)),
     } as any);
 
-    await expect(
-      service.executeClaimed(MODULE_ID, prepared, backupProof())
-    ).rejects.toThrow('迁移台账已变化，请重新执行 dry-run');
+    await expect(service.executeClaimed(MODULE_ID, prepared)).rejects.toThrow(
+      '迁移台账已变化，请重新执行 dry-run'
+    );
     expect(query).not.toHaveBeenCalled();
   });
 
   it('DDL 失败时不写 applied 台账也不提交安装状态', async () => {
-    const { service, backupGate } = migrationService();
-    backupGate.registerVerifier(jest.fn().mockResolvedValue(undefined));
+    const { service } = migrationService();
     const plan = await service.dryRun({
       moduleId: MODULE_ID,
       version: '0.1.0',
@@ -1137,9 +1110,9 @@ describe('Pah 通用 SQL 迁移执行器', () => {
       transaction: jest.fn(callback => callback(manager)),
     } as any);
 
-    await expect(
-      service.executeClaimed(MODULE_ID, prepared, backupProof())
-    ).rejects.toThrow('ddl failed');
+    await expect(service.executeClaimed(MODULE_ID, prepared)).rejects.toThrow(
+      'ddl failed'
+    );
     expect(migrationSave).not.toHaveBeenCalled();
     expect(installationUpdate).not.toHaveBeenCalled();
   });

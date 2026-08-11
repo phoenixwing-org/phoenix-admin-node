@@ -99,12 +99,13 @@ postinstall，不搜索或复制插件 `node_modules`，也不联网安装产品
 
 正式构建在插件源码被受控挂载到 `src/modules/<moduleId>` 后执行 `pnpm build`：
 
-1. `cool entity` 通用扫描 `src/modules/*/entity/**/*.ts` 并生成生产实体清单；
+1. `cool entity` 通用扫描 `src/modules/*/entity/**/*.ts` 并生成生产实体清单；固定输出
+   `src/entities.ts` 是 ignored 运行时文件，不是 Host 或任一产品的 tracked 源码真源；
 2. TypeScript 编译业务模块；
 3. `scripts/copy-pah-plugin-artifacts.mjs` 校验通用 descriptor，将 descriptor、所有 `src/modules/*/migrations` 与已声明 runtime artifacts 原样复制到 `dist/modules/*`；存在迁移或 runtime 制品但 descriptor 缺失、错配或校验失败时构建失败；
 4. 打包配置把 descriptor 和 SQL 作为资产包含。
 
-Host 仓不提交业务插件目录或产品路径。构建流水线挂载的业务源码、生成的产品实体导入和 SQL 只存在于受控构建工作区/产物；业务插件仓仍是源码真源。
+Host 仓不提交业务插件目录或产品路径。构建流水线挂载的业务源码、生成的产品实体导入和 SQL 只存在于受控构建工作区/产物；业务插件仓仍是源码真源。无插件、单插件、多插件和卸载后的冷构建都重新生成同一个 ignored 清单，挂载变化不会再把长期 Host 工作树改脏。
 
 ## dry-run、安装与升级
 

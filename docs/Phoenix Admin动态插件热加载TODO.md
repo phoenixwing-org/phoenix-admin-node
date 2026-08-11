@@ -68,23 +68,26 @@ Phoenix 业务插件当前采用 `activationMode: restart`。`.phoenix.cool` 可
 只有在依赖隔离、精确复现、可信来源、无任意脚本执行、原子启用和可恢复回滚均有证据后，才考虑
 放宽“插件必须自包含运行制品”的当前规则。在此之前，安装页不应提示管理员临时执行 `pnpm add`。
 
-## 开发实体清单不得污染源码
+## 已完成：运行时实体清单不再污染源码
 
-当前插件开发装配会重写 tracked 文件 `src/entities.ts`，导致只要挂载或移除业务插件，Host
-源码工作树就出现大量与产品路径有关的 diff。这既容易把产品实体误提交到 Host，也使干净构建、
-分支切换和插件卸载的边界不可靠。
+Cool 8.0.8 的 `cool entity` 固定扫描 `src/modules/*/entity/**/*.ts`，并固定写入
+`src/entities.ts`。这个文件本来就是生产构建输入，不能同时充当稳定的 Host tracked 真源；否则插件
+挂载、升级和移除都会把产品路径写进 Host Git diff。
 
-后续应把稳定的 Host 实体清单与开发装配生成清单分开：
+当前契约已经收口为：
 
-- `src/entities.ts` 只保留 Phoenix Admin Host 自身实体，作为 tracked、可审计的正式基线；
-- 插件装配把实体索引写到 ignored/generated 文件（候选名 `src/entities.dev.ts`），文件采用原子替换；
-- local/dev 配置显式合并 Host 基线与 generated 清单，production 只消费已验证装配制品内的不可变清单；
-- generated 清单必须记录 moduleId、版本和 descriptor/checksum，拒绝失效路径、重复实体和不同内容覆盖；
-- 卸载或切换装配只重建 generated 清单，不改 tracked 源码；不存在插件时仍可正常编译和启动；
-- `mwtsc`、TypeORM metadata、测试和打包必须消费同一解析结果，不能由多个脚本各自扫描；
-- 回归至少覆盖无插件、单插件、多插件、插件目录含空格、目录移除后冷启动，以及 Git worktree clean。
+- `src/entities.ts` 与同类的 `src/index.ts` 一样，是 ignored 运行时生成物；
+- Host/Pah 的稳定数据库基线继续由 `src/modules/pah/host-baseline/host-baseline.json`、冻结
+  `sourceCommit`、逐文件 SHA 和 schema 制品审计，不从当前运行时清单反推；
+- local/dev 继续使用 `**/modules/*/entity` 通用发现，production build 在编译前只运行一次
+  `cool entity`，TypeORM 与编译产物消费同一份生成结果；
+- 插件仍只能通过通用 `src/modules/<moduleId>` 装配进入扫描范围，Host 不保存产品 ID 特例；
+- 无插件、单插件、多插件、插件目录含空格以及移除后的冷生成由
+  `test/modules/pah/runtime-entities.test.ts` 回归；重复生成必须保持相同字节。
 
-在该方案落地前，`src/entities.ts` 的装配差异只能视为本机运行产物，不得进入 Host 提交。
+因此插件安装和卸载只改变 ignored 的装配输出，不再改变长期 tracked 源码。manifest、descriptor、
+migration 和运行时制品的 moduleId/版本/SHA 校验仍由现有 Pah 权威装配器负责，不把这些职责复制到
+Cool 的实体索引里。
 
 ## 预期验收
 

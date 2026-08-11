@@ -1,5 +1,7 @@
 Phoenix Admin Node
-Copyright (c) PhoenixWing contributors
+Copyright 2024–2026 PhoenixWing contributors
+
+Copyright © 2024–2026 凤凰之翼（PhoenixWing）贡献者。
 
 This repository is a PhoenixWing-maintained fork of Cool Admin Midway.
 It is not an official Cool Admin distribution.
@@ -11,3 +13,6 @@ distributed under the MIT License.
 Fixed upstream baseline:
 cool-team-official/cool-admin-midway 8.x
 e545ef6f3b0c08581e34bd3207ca57d851ccc3ae
+
+Product source repository:
+https://gitee.com/phoenixwing/phoenix-admin-node

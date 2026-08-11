@@ -1,8 +1,10 @@
 import { createHash } from 'crypto';
+import * as fs from 'fs';
 import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -225,6 +227,10 @@ describe('Phoenix 插件包本地装配', () => {
     const service = new PahPluginPackageService();
     Object.assign(service, {
       pahPluginService: { register },
+      pahPublicLoginBrandingService: {
+        recordVerifiedPackage: jest.fn().mockReturnValue({ recorded: false }),
+        removeVerifiedPackageReceipt: jest.fn(),
+      },
       logger: { info: jest.fn(), error: jest.fn() },
     });
     return { service, register };
@@ -249,6 +255,14 @@ describe('Phoenix 插件包本地装配', () => {
         version: '0.1.0',
         fileCount: 5,
         restartRequired: true,
+        validationChecks: expect.arrayContaining([
+          expect.objectContaining({ id: 'archive-safety' }),
+          expect.objectContaining({ id: 'root-contract' }),
+          expect.objectContaining({ id: 'identity-manifest' }),
+          expect.objectContaining({ id: 'integrity-migrations' }),
+          expect.objectContaining({ id: 'runtime-payloads' }),
+          expect.objectContaining({ id: 'host-stage-register' }),
+        ]),
       })
     );
     expect(
@@ -257,6 +271,30 @@ describe('Phoenix 插件包本地装配', () => {
     expect(
       existsSync(path.join(root, 'vue', 'src/modules', MODULE_ID, 'config.ts'))
     ).toBe(true);
+  });
+
+  it('根目录契约一次报告缺失文件和旧 payload 布局', async () => {
+    const packagePath = path.join(root, 'legacy-layout.phoenix.cool');
+    createPackage(packagePath);
+    const AdmZip = require('adm-zip');
+    const zip = new AdmZip(packagePath);
+    zip.deleteFile('manifest.json');
+    zip.addFile(
+      `payload/midway/${MODULE_ID}/config.ts`,
+      Buffer.from('export default {};\n')
+    );
+    zip.writeZip(packagePath);
+    const { service, register } = packageService();
+
+    await expect(
+      service.installLocalPackage({
+        data: packagePath,
+        filename: path.basename(packagePath),
+      })
+    ).rejects.toThrow(
+      /失败阶段：根目录契约.*已通过：运行模式、上传边界、ZIP 与路径安全.*缺少根文件：manifest\.json.*包含旧布局：payload\/midway/
+    );
+    expect(register).not.toHaveBeenCalled();
   });
 
   it('明确拒绝旧 .pah.cool 后缀且不写入 Host', async () => {
@@ -321,6 +359,45 @@ describe('Phoenix 插件包本地装配', () => {
         filename: path.basename(packagePath),
       })
     ).resolves.toEqual(expect.objectContaining({ moduleId: MODULE_ID }));
+  });
+
+  it('登记失败时精确清理本次新建的品牌收据与 Host payload', async () => {
+    const packagePath = path.join(root, 'example-plugin.phoenix.cool');
+    createPackage(packagePath);
+    const removeVerifiedPackageReceipt = jest.fn();
+    const service = new PahPluginPackageService();
+    Object.assign(service, {
+      pahPluginService: {
+        register: jest.fn().mockRejectedValue(new Error('register failed')),
+      },
+      pahPublicLoginBrandingService: {
+        recordVerifiedPackage: jest.fn().mockReturnValue({
+          recorded: true,
+          receiptCreated: true,
+        }),
+        removeVerifiedPackageReceipt,
+      },
+      logger: { info: jest.fn(), error: jest.fn() },
+    });
+
+    await expect(
+      service.installLocalPackage({
+        data: packagePath,
+        filename: path.basename(packagePath),
+      })
+    ).rejects.toThrow('register failed');
+
+    expect(removeVerifiedPackageReceipt).toHaveBeenCalledWith(
+      MODULE_ID,
+      '0.1.0',
+      expect.stringMatching(/^[a-f0-9]{64}$/)
+    );
+    expect(existsSync(path.join(root, 'node', 'src/modules', MODULE_ID))).toBe(
+      false
+    );
+    expect(existsSync(path.join(root, 'vue', 'src/modules', MODULE_ID))).toBe(
+      false
+    );
   });
 
   it('清理已验证包后移除 Node/Vue 装配并允许重新选择', async () => {
@@ -420,15 +497,309 @@ describe('Phoenix 插件包本地装配', () => {
     expect(existsSync(path.join(external, 'config.ts'))).toBe(true);
   });
 
-  it('有待执行 DDL 时按近期备份、服务端新计划和内部证明执行受控安装', async () => {
-    const proof = {
-      backupId: 'backup-example-plugin',
+  it('受控卸载事务式移除 Node/Vue payload 并要求重启 Host', async () => {
+    for (const runtime of ['node', 'vue']) {
+      const target = path.join(root, runtime, 'src/modules', MODULE_ID);
+      mkdirSync(target, { recursive: true });
+      writeFileSync(path.join(target, 'config.ts'), 'export default {};\n');
+    }
+    const uninstall = jest.fn().mockResolvedValue({
       moduleId: MODULE_ID,
-      pluginVersion: '0.1.0',
-      dataSourceName: 'default' as const,
-      createdAt: new Date().toISOString(),
-      restoreProcedure: 'restore-example-plugin',
-    };
+      state: 'uninstalled',
+      retainedTables: ['example_plugin_item'],
+      purgedTables: [],
+    });
+    const service = new PahPluginPackageService();
+    Object.assign(service, {
+      pahPluginService: {
+        getByModuleId: jest.fn().mockResolvedValue({
+          moduleId: MODULE_ID,
+          version: '0.1.0',
+          state: 'disabled',
+        }),
+        uninstall,
+      },
+      logger: { info: jest.fn(), error: jest.fn() },
+    });
+
+    await expect(service.controlledUninstallLocal(MODULE_ID)).resolves.toEqual(
+      expect.objectContaining({
+        moduleId: MODULE_ID,
+        version: '0.1.0',
+        removedPayloads: ['node', 'vue'],
+        restartRequired: true,
+        cleanupPendingPayloads: [],
+        installation: expect.objectContaining({
+          state: 'uninstalled',
+          retainedTables: ['example_plugin_item'],
+          purgedTables: [],
+        }),
+      })
+    );
+    expect(uninstall).toHaveBeenCalledWith(MODULE_ID);
+    for (const runtime of ['node', 'vue']) {
+      expect(
+        existsSync(path.join(root, runtime, 'src/modules', MODULE_ID))
+      ).toBe(false);
+      expect(
+        readdirSync(
+          path.join(
+            root,
+            runtime,
+            '.runtime',
+            'phoenix-plugin-recycle',
+            'uninstall'
+          )
+        )
+      ).toEqual([]);
+    }
+  });
+
+  it('受控卸载状态提交失败时恢复两个 Host payload', async () => {
+    for (const runtime of ['node', 'vue']) {
+      const target = path.join(root, runtime, 'src/modules', MODULE_ID);
+      mkdirSync(target, { recursive: true });
+      writeFileSync(path.join(target, 'config.ts'), 'export default {};\n');
+    }
+    const service = new PahPluginPackageService();
+    Object.assign(service, {
+      pahPluginService: {
+        getByModuleId: jest.fn().mockResolvedValue({
+          moduleId: MODULE_ID,
+          version: '0.1.0',
+          state: 'installed',
+        }),
+        uninstall: jest.fn().mockRejectedValue(new Error('state changed')),
+      },
+      logger: { info: jest.fn(), error: jest.fn() },
+    });
+
+    await expect(service.controlledUninstallLocal(MODULE_ID)).rejects.toThrow(
+      'state changed'
+    );
+    for (const runtime of ['node', 'vue']) {
+      expect(
+        existsSync(
+          path.join(root, runtime, 'src/modules', MODULE_ID, 'config.ts')
+        )
+      ).toBe(true);
+    }
+  });
+
+  it('受控卸载回滚先预检双端目标，遇到并发占用时不产生半恢复', async () => {
+    for (const runtime of ['node', 'vue']) {
+      const target = path.join(root, runtime, 'src/modules', MODULE_ID);
+      mkdirSync(target, { recursive: true });
+      writeFileSync(path.join(target, 'config.ts'), 'export default {};\n');
+    }
+    const nodeTarget = path.join(root, 'node', 'src/modules', MODULE_ID);
+    const service = new PahPluginPackageService();
+    Object.assign(service, {
+      pahPluginService: {
+        getByModuleId: jest.fn().mockResolvedValue({
+          moduleId: MODULE_ID,
+          version: '0.1.0',
+          state: 'disabled',
+        }),
+        uninstall: jest.fn().mockImplementation(async () => {
+          mkdirSync(nodeTarget, { recursive: true });
+          writeFileSync(path.join(nodeTarget, 'collision.txt'), 'occupied');
+          throw new Error('state changed');
+        }),
+      },
+      logger: { info: jest.fn(), error: jest.fn() },
+    });
+
+    await expect(service.controlledUninstallLocal(MODULE_ID)).rejects.toThrow(
+      'payload 自动恢复失败'
+    );
+    expect(existsSync(path.join(nodeTarget, 'collision.txt'))).toBe(true);
+    expect(existsSync(path.join(root, 'vue', 'src/modules', MODULE_ID))).toBe(
+      false
+    );
+    for (const runtime of ['node', 'vue']) {
+      const recycleRoot = path.join(
+        root,
+        runtime,
+        '.runtime',
+        'phoenix-plugin-recycle',
+        'uninstall'
+      );
+      const operations = readdirSync(recycleRoot);
+      expect(operations).toHaveLength(1);
+      expect(
+        existsSync(
+          path.join(recycleRoot, operations[0], MODULE_ID, 'config.ts')
+        )
+      ).toBe(true);
+    }
+  });
+
+  it('受控卸载提交成功后回收清理异常不误报失败并返回残留', async () => {
+    for (const runtime of ['node', 'vue']) {
+      const target = path.join(root, runtime, 'src/modules', MODULE_ID);
+      mkdirSync(target, { recursive: true });
+      writeFileSync(path.join(target, 'config.ts'), 'export default {};\n');
+    }
+    const logger = { info: jest.fn(), error: jest.fn() };
+    const service = new PahPluginPackageService();
+    Object.assign(service, {
+      pahPluginService: {
+        getByModuleId: jest.fn().mockResolvedValue({
+          moduleId: MODULE_ID,
+          version: '0.1.0',
+          state: 'disabled',
+        }),
+        uninstall: jest.fn().mockResolvedValue({
+          moduleId: MODULE_ID,
+          state: 'uninstalled',
+        }),
+      },
+      logger,
+    });
+    const originalRmSync = fs.rmSync;
+    const rmSpy = jest
+      .spyOn(fs, 'rmSync')
+      .mockImplementation((target, options) => {
+        if (String(target).includes('phoenix-plugin-recycle/uninstall/')) {
+          throw new Error('archive is busy');
+        }
+        return originalRmSync(target, options);
+      });
+
+    try {
+      await expect(
+        service.controlledUninstallLocal(MODULE_ID)
+      ).resolves.toEqual(
+        expect.objectContaining({
+          removedPayloads: ['node', 'vue'],
+          restartRequired: true,
+          cleanupPendingPayloads: ['node', 'vue'],
+          installation: expect.objectContaining({ state: 'uninstalled' }),
+        })
+      );
+    } finally {
+      rmSpy.mockRestore();
+    }
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining('archive cleanup pending')
+    );
+    for (const runtime of ['node', 'vue']) {
+      expect(
+        existsSync(path.join(root, runtime, 'src/modules', MODULE_ID))
+      ).toBe(false);
+      expect(
+        readdirSync(
+          path.join(
+            root,
+            runtime,
+            '.runtime',
+            'phoenix-plugin-recycle',
+            'uninstall'
+          )
+        )
+      ).toHaveLength(1);
+    }
+  });
+
+  it('受控卸载拒绝开发者 symlink payload 且不提交状态', async () => {
+    const external = path.join(root, 'external-uninstall-plugin');
+    mkdirSync(external, { recursive: true });
+    writeFileSync(path.join(external, 'config.ts'), 'export default {};\n');
+    const moduleParent = path.join(root, 'node', 'src/modules');
+    mkdirSync(moduleParent, { recursive: true });
+    symlinkSync(external, path.join(moduleParent, MODULE_ID));
+    const uninstall = jest.fn();
+    const service = new PahPluginPackageService();
+    Object.assign(service, {
+      pahPluginService: {
+        getByModuleId: jest.fn().mockResolvedValue({
+          moduleId: MODULE_ID,
+          version: '0.1.0',
+          state: 'disabled',
+        }),
+        uninstall,
+      },
+      logger: { info: jest.fn(), error: jest.fn() },
+    });
+
+    await expect(service.controlledUninstallLocal(MODULE_ID)).rejects.toThrow(
+      '不是安装器管理的普通目录'
+    );
+    expect(uninstall).not.toHaveBeenCalled();
+    expect(existsSync(path.join(external, 'config.ts'))).toBe(true);
+  });
+
+  it('受控卸载拒绝越界的 modules symlink 与非法模块 ID', async () => {
+    const externalModules = path.join(root, 'external-modules');
+    const externalPayload = path.join(externalModules, MODULE_ID);
+    mkdirSync(externalPayload, { recursive: true });
+    writeFileSync(
+      path.join(externalPayload, 'config.ts'),
+      'export default {};\n'
+    );
+    const sourceRoot = path.join(root, 'node', 'src');
+    mkdirSync(sourceRoot, { recursive: true });
+    symlinkSync(externalModules, path.join(sourceRoot, 'modules'));
+    const uninstall = jest.fn();
+    const service = new PahPluginPackageService();
+    Object.assign(service, {
+      pahPluginService: {
+        getByModuleId: jest.fn().mockResolvedValue({
+          moduleId: MODULE_ID,
+          version: '0.1.0',
+          state: 'disabled',
+        }),
+        uninstall,
+      },
+      logger: { info: jest.fn(), error: jest.fn() },
+    });
+
+    await expect(service.controlledUninstallLocal(MODULE_ID)).rejects.toThrow(
+      '不是安装器管理的普通目录'
+    );
+    expect(uninstall).not.toHaveBeenCalled();
+    expect(existsSync(path.join(externalPayload, 'config.ts'))).toBe(true);
+
+    service.pahPluginService.getByModuleId = jest.fn().mockResolvedValue({
+      moduleId: '../outside',
+      version: '0.1.0',
+      state: 'disabled',
+    });
+    await expect(service.controlledUninstallLocal(MODULE_ID)).rejects.toThrow(
+      '插件模块 ID 不安全'
+    );
+    expect(uninstall).not.toHaveBeenCalled();
+  });
+
+  it('无落盘 payload 时仍提交卸载但不误报重启', async () => {
+    const uninstall = jest.fn().mockResolvedValue({
+      moduleId: MODULE_ID,
+      state: 'uninstalled',
+    });
+    const service = new PahPluginPackageService();
+    Object.assign(service, {
+      pahPluginService: {
+        getByModuleId: jest.fn().mockResolvedValue({
+          moduleId: MODULE_ID,
+          version: '0.1.0',
+          state: 'disabled',
+        }),
+        uninstall,
+      },
+      logger: { info: jest.fn(), error: jest.fn() },
+    });
+
+    await expect(service.controlledUninstallLocal(MODULE_ID)).resolves.toEqual(
+      expect.objectContaining({
+        removedPayloads: [],
+        restartRequired: false,
+      })
+    );
+    expect(uninstall).toHaveBeenCalledWith(MODULE_ID);
+  });
+
+  it('有待执行 DDL 时使用服务端新计划执行受控安装且不编排备份', async () => {
     const service = new PahPluginPackageService();
     const migrationPlan = jest.fn().mockResolvedValue({
       planId: 'server-plan',
@@ -447,7 +818,7 @@ describe('Phoenix 插件包本地装配', () => {
         installCompiled,
       },
       pahLocalPluginBackupService: {
-        latestProof: jest.fn().mockReturnValue(proof),
+        latestProof: jest.fn(),
         createVerifiedBackup: jest.fn(),
       },
       logger: { info: jest.fn(), error: jest.fn() },
@@ -456,71 +827,21 @@ describe('Phoenix 插件包本地装配', () => {
     const result = await service.controlledInstallLocal(MODULE_ID);
 
     expect(migrationPlan).toHaveBeenCalledWith(MODULE_ID);
-    expect(installCompiled).toHaveBeenCalledWith(
-      MODULE_ID,
-      'server-plan',
-      proof
-    );
+    expect(installCompiled).toHaveBeenCalledWith(MODULE_ID, 'server-plan');
+    expect(
+      service.pahLocalPluginBackupService.latestProof
+    ).not.toHaveBeenCalled();
+    expect(
+      service.pahLocalPluginBackupService.createVerifiedBackup
+    ).not.toHaveBeenCalled();
     expect(result).toEqual(
       expect.objectContaining({
-        backupId: proof.backupId,
-        backupCreated: false,
         appliedMigrations: 1,
       })
     );
   });
 
-  it('缺少近期证明时由一次安装自动创建并验证备份', async () => {
-    const proof = {
-      backupId: 'backup-created-during-install',
-      moduleId: MODULE_ID,
-      pluginVersion: '0.1.0',
-      dataSourceName: 'default' as const,
-      createdAt: new Date().toISOString(),
-      restoreProcedure: 'restore-example-plugin',
-    };
-    const installCompiled = jest.fn().mockResolvedValue({ state: 'installed' });
-    const createVerifiedBackup = jest.fn().mockResolvedValue({ proof });
-    const service = new PahPluginPackageService();
-    Object.assign(service, {
-      pahPluginService: {
-        getByModuleId: jest.fn().mockResolvedValue({
-          moduleId: MODULE_ID,
-          version: '0.1.0',
-          state: 'verified',
-        }),
-        migrationPlan: jest.fn().mockResolvedValue({
-          planId: 'server-plan',
-          backupRequired: true,
-          items: [{ state: 'pending' }],
-        }),
-        installCompiled,
-      },
-      pahLocalPluginBackupService: {
-        latestProof: jest.fn(() => {
-          throw new Error('missing');
-        }),
-        createVerifiedBackup,
-      },
-      logger: { info: jest.fn(), error: jest.fn() },
-    });
-
-    await expect(service.controlledInstallLocal(MODULE_ID)).resolves.toEqual(
-      expect.objectContaining({
-        backupId: proof.backupId,
-        backupCreated: true,
-        appliedMigrations: 1,
-      })
-    );
-    expect(createVerifiedBackup).toHaveBeenCalledWith(MODULE_ID, '0.1.0');
-    expect(installCompiled).toHaveBeenCalledWith(
-      MODULE_ID,
-      'server-plan',
-      proof
-    );
-  });
-
-  it('无待执行 DDL 时不创建无意义备份', async () => {
+  it('无待执行 DDL 时直接完成受控安装', async () => {
     const installCompiled = jest.fn().mockResolvedValue({ state: 'installed' });
     const latestProof = jest.fn();
     const createVerifiedBackup = jest.fn();
@@ -545,18 +866,12 @@ describe('Phoenix 插件包本地装配', () => {
 
     await expect(service.controlledInstallLocal(MODULE_ID)).resolves.toEqual(
       expect.objectContaining({
-        backupId: undefined,
-        backupCreated: false,
         appliedMigrations: 0,
       })
     );
     expect(latestProof).not.toHaveBeenCalled();
     expect(createVerifiedBackup).not.toHaveBeenCalled();
-    expect(installCompiled).toHaveBeenCalledWith(
-      MODULE_ID,
-      'server-plan',
-      undefined
-    );
+    expect(installCompiled).toHaveBeenCalledWith(MODULE_ID, 'server-plan');
   });
 
   it('API 重启检查只由服务端解析运行制品，不接收浏览器路径', async () => {

@@ -342,9 +342,6 @@ export class PahPluginMigrationService extends BaseService {
   @Inject()
   compiledPluginRegistry: PahCompiledPluginRegistry;
 
-  @Inject()
-  backupGate: PahMigrationBackupGate;
-
   private readonly plans = new Map<string, PahStoredMigrationPlan>();
 
   async prepare(
@@ -503,33 +500,13 @@ export class PahPluginMigrationService extends BaseService {
   }
 
   /** @internal 只接受同一进程刚刚认领的一次性 dry-run 计划。 */
-  async executeClaimed(
-    moduleId: string,
-    prepared: PahPreparedMigrationPlan,
-    backupProof?: PahMigrationBackupProof
-  ) {
+  async executeClaimed(moduleId: string, prepared: PahPreparedMigrationPlan) {
     if (moduleId !== prepared.moduleId) {
       throw new CoolCommException('迁移计划与插件不匹配');
     }
     if (prepared.appliedSignature === undefined) {
       throw new CoolCommException('迁移计划没有完成 dry-run 台账快照');
     }
-    if (prepared.backupRequired) {
-      if (!backupProof) {
-        throw new CoolCommException('生产插件 DDL 必须提供可信备份证明');
-      }
-      await this.backupGate.verify(backupProof, {
-        moduleId,
-        pluginVersion: prepared.pluginVersion,
-        dataSourceName: 'default',
-        migrations: prepared.items.map(item => ({
-          id: item.declaration.id,
-          version: item.declaration.version,
-          checksum: item.declaration.checksum,
-        })),
-      });
-    }
-
     const batchId = randomUUID();
     return this.getOrmManager().transaction(async manager => {
       const installationRepository = manager.getRepository(
@@ -577,7 +554,7 @@ export class PahPluginMigrationService extends BaseService {
             executor: 'pah-sql-v1',
             artifactPath: item.declaration.artifact.path,
             pluginVersion: info.version,
-            backupId: backupProof?.backupId ?? null,
+            backupId: null,
           }),
           appliedAt: new Date().toISOString(),
           rolledBackAt: null,

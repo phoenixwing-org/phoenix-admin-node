@@ -1,3 +1,8 @@
+import {
+  PahPublicLoginBrandingUiContributionsV1,
+  validatePahPublicLoginBrandingContributions,
+} from './public-login-branding';
+
 export const PAH_PLUGIN_FORMAT_VERSION = 2 as const;
 
 export const PAH_HOST_REUSE_CAPABILITIES = [
@@ -85,6 +90,8 @@ export interface PahPluginMigrationDeclaration {
 
 export interface PahPluginManifest {
   formatVersion: number;
+  /** Site-level plugin class; ordinary business plugins omit it. */
+  pluginType?: string;
   moduleId: string;
   name: string;
   version: string;
@@ -144,6 +151,8 @@ export interface PahPluginManifest {
   migrations: PahPluginMigrationDeclaration[];
   healthChecks: Array<{ id: string; path: string }>;
   hostReuse: PahHostReuseCapability[];
+  /** Host validates login/brand; post-login home remains a normal route contribution. */
+  uiContributions?: PahPublicLoginBrandingUiContributionsV1;
   dataOwnership: {
     tables: string[];
     retainedOnUninstall: boolean;
@@ -314,6 +323,12 @@ export function validatePahPluginManifest(
     errors.push('缺少发布者');
   if (!isText(input.license) || !input.license.trim())
     errors.push('缺少许可证声明');
+  if (
+    input.pluginType !== undefined &&
+    input.pluginType !== 'phoenix.admin.branding'
+  ) {
+    errors.push(`pluginType 不受支持：${String(input.pluginType)}`);
+  }
   if (input.activationMode !== 'restart') {
     errors.push('首版插件只允许受控重启激活');
   }
@@ -329,6 +344,13 @@ export function validatePahPluginManifest(
   if (!/^\/[a-z][a-z0-9-]*$/.test(routePrefix)) {
     errors.push(`routePrefix 必须是单段安全路径：${routePrefix}`);
   }
+  errors.push(
+    ...validatePahPublicLoginBrandingContributions(
+      moduleId,
+      input.pluginType,
+      input.uiContributions
+    ).errors
+  );
 
   const routes = Array.isArray(input.routes) ? input.routes : [];
   if (!Array.isArray(input.routes)) errors.push('routes 必须是数组');

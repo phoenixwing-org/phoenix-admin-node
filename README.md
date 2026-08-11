@@ -77,3 +77,6 @@ pnpm build
 Phoenix Admin Host 新增的源码、实体和类型统一使用 `Pah*` 前缀；新增数据库表、配置键等持久化标识使用 `pah_` 前缀。
 
 本仓库及仓内新增 `Pah*` 代码统一采用 MIT。根 [LICENSE](LICENSE) 保留上游原始版权和许可文本，Phoenix 分叉关系及第三方依赖边界见 [LICENSING.md](LICENSING.md) 与 [NOTICE](NOTICE)。
+
+Copyright © 2024–2026 凤凰之翼（PhoenixWing）贡献者。本产品的正式源码仓库为
+[phoenix-admin-node](https://gitee.com/phoenixwing/phoenix-admin-node)。

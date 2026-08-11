@@ -18,6 +18,7 @@ import * as LocalConfig from './config/config.local';
 import * as ProdConfig from './config/config.prod';
 import * as cool from '@cool-midway/core';
 import * as upload from '@midwayjs/upload';
+import { PahPublicLoginBrandingService } from './modules/pah/service/public-login-branding';
 // import * as task from '@cool-midway/task';
 // import * as rpc from '@cool-midway/rpc';
 
@@ -66,5 +67,18 @@ export class MainConfiguration {
   @Inject()
   logger: ILogger;
 
-  async onReady() {}
+  @Inject()
+  pahPublicLoginBrandingService: PahPublicLoginBrandingService;
+
+  async onReady() {
+    try {
+      await this.pahPublicLoginBrandingService.reconcileOnStartup();
+    } catch (error) {
+      this.logger.error(
+        `[public-login-branding] startup reconcile failed; endpoint will use Host default: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+  }
 }

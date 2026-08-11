@@ -6,6 +6,7 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   renameSync,
   rmSync,
   writeFileSync,
@@ -17,8 +18,8 @@ import {
   validatePahPluginManifest,
 } from '../interface/plugin';
 import { PahLocalPluginBackupService } from './local-backup';
-import { PahMigrationBackupProof } from './migration';
 import { PahPluginService } from './plugin';
+import { PahPublicLoginBrandingService } from './public-login-branding';
 
 const PHOENIX_PACKAGE_SUFFIX = '.phoenix.cool';
 const MAX_PACKAGE_BYTES = 100 * 1024 * 1024;
@@ -34,6 +35,17 @@ interface PackageIntegrityItem {
   path: string;
   size: number;
   sha256: string;
+}
+
+interface PackageValidationCheck {
+  id: string;
+  label: string;
+  detail: string;
+}
+
+interface PackageValidationProgress {
+  current: string;
+  checks: PackageValidationCheck[];
 }
 
 interface PackageMetadata {
@@ -52,6 +64,17 @@ interface PackageMetadata {
     source?: string;
     target?: string;
   }>;
+}
+
+type HostRuntime = 'node' | 'vue';
+
+interface ArchivedHostPayload {
+  runtime: HostRuntime;
+  root: string;
+  moduleId: string;
+  target: string;
+  archived: string;
+  operationRoot: string;
 }
 
 function sha256(content: Buffer) {
@@ -100,11 +123,13 @@ function assertOrdinaryZipEntry(entry: any) {
 }
 
 function resolveHostRoots() {
-  const nodeRoot = path.resolve(
-    process.env.PHOENIX_ADMIN_NODE_ROOT || process.cwd()
+  const nodeRoot = realpathSync(
+    path.resolve(process.env.PHOENIX_ADMIN_NODE_ROOT || process.cwd())
   );
-  const vueRoot = path.resolve(
-    process.env.PHOENIX_ADMIN_VUE_ROOT || path.join(nodeRoot, '../vue')
+  const vueRoot = realpathSync(
+    path.resolve(
+      process.env.PHOENIX_ADMIN_VUE_ROOT || path.join(nodeRoot, '../vue')
+    )
   );
   const nodePackage = JSON.parse(
     readFileSync(path.join(nodeRoot, 'package.json'), 'utf8')
@@ -121,6 +146,176 @@ function resolveHostRoots() {
     );
   }
   return { nodeRoot, vueRoot };
+}
+
+function requireSafeModuleId(moduleId: string) {
+  if (!/^[a-z][a-z0-9-]*$/.test(moduleId)) {
+    throw new CoolCommException('插件模块 ID 不安全，拒绝清理本机装配');
+  }
+}
+
+function requireOrdinaryDirectory(directory: string, label: string) {
+  const stat = lstatSync(directory);
+  if (stat.isSymbolicLink() || !stat.isDirectory()) {
+    throw new CoolCommException(`${label} 不是安装器管理的普通目录，拒绝清理`);
+  }
+}
+
+function requirePathWithinRoot(root: string, target: string, label: string) {
+  const relative = path.relative(root, target);
+  if (
+    !relative ||
+    relative.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relative)
+  ) {
+    throw new CoolCommException(`${label} 越出 Phoenix Admin Host，拒绝清理`);
+  }
+}
+
+function managedPayloadTarget(
+  root: string,
+  runtime: HostRuntime,
+  moduleId: string
+) {
+  const sourceRoot = path.join(root, 'src');
+  const modulesRoot = path.join(sourceRoot, 'modules');
+  const target = path.join(modulesRoot, moduleId);
+  requirePathWithinRoot(root, target, `${runtime} Host payload`);
+  if (!existsSync(sourceRoot)) return target;
+  requireOrdinaryDirectory(sourceRoot, `${runtime} Host src`);
+  if (!existsSync(modulesRoot)) return target;
+  requireOrdinaryDirectory(modulesRoot, `${runtime} Host modules`);
+  if (!existsSync(target)) return target;
+  requireOrdinaryDirectory(target, `${runtime} Host 的 ${moduleId}`);
+  return target;
+}
+
+function createArchiveOperationRoot(
+  root: string,
+  operation: 'discard' | 'uninstall',
+  operationId: string
+) {
+  let current = root;
+  for (const segment of ['.runtime', 'phoenix-plugin-recycle', operation]) {
+    current = path.join(current, segment);
+    requirePathWithinRoot(root, current, '插件回收目录');
+    if (existsSync(current)) {
+      requireOrdinaryDirectory(current, '插件回收目录');
+    } else {
+      mkdirSync(current, { recursive: false });
+    }
+  }
+  const operationRoot = path.join(current, operationId);
+  requirePathWithinRoot(root, operationRoot, '插件回收操作目录');
+  mkdirSync(operationRoot, { recursive: false });
+  return operationRoot;
+}
+
+function restoreArchivedPayloads(moved: ArchivedHostPayload[]) {
+  const rollbackOrder = [...moved].reverse();
+  for (const item of rollbackOrder) {
+    if (!existsSync(item.archived)) {
+      throw new CoolCommException(
+        `${item.runtime} Host 回收 payload 缺失，无法自动恢复卸载前状态`
+      );
+    }
+    requireOrdinaryDirectory(
+      item.archived,
+      `${item.runtime} Host 回收 payload`
+    );
+    if (existsSync(item.target)) {
+      throw new CoolCommException(
+        `${item.runtime} Host 的 ${path.basename(
+          item.target
+        )} 已被并发占用，无法自动恢复卸载前 payload`
+      );
+    }
+    managedPayloadTarget(item.root, item.runtime, item.moduleId);
+  }
+
+  const restored: ArchivedHostPayload[] = [];
+  try {
+    for (const item of rollbackOrder) {
+      renameSync(item.archived, item.target);
+      restored.push(item);
+    }
+  } catch (error) {
+    for (const item of [...restored].reverse()) {
+      if (existsSync(item.target) && !existsSync(item.archived)) {
+        renameSync(item.target, item.archived);
+      }
+    }
+    throw error;
+  }
+  for (const item of rollbackOrder) {
+    rmSync(item.operationRoot, { recursive: true, force: true });
+  }
+}
+
+function archiveLocalPayloads(
+  moduleId: string,
+  operation: 'discard' | 'uninstall'
+) {
+  requireSafeModuleId(moduleId);
+  const roots = resolveHostRoots();
+  const operationId = randomUUID();
+  const moved: ArchivedHostPayload[] = [];
+  try {
+    for (const runtime of ['node', 'vue'] as const) {
+      const root = roots[`${runtime}Root`];
+      const target = managedPayloadTarget(root, runtime, moduleId);
+      if (!existsSync(target)) continue;
+      const operationRoot = createArchiveOperationRoot(
+        root,
+        operation,
+        operationId
+      );
+      const archived = path.join(operationRoot, moduleId);
+      requirePathWithinRoot(root, archived, `${runtime} Host 回收 payload`);
+      try {
+        renameSync(target, archived);
+      } catch (error) {
+        rmSync(operationRoot, { recursive: true, force: true });
+        throw error;
+      }
+      moved.push({
+        runtime,
+        root,
+        moduleId,
+        target,
+        archived,
+        operationRoot,
+      });
+    }
+    return moved;
+  } catch (error) {
+    try {
+      restoreArchivedPayloads(moved);
+    } catch (rollbackError) {
+      throw new CoolCommException(
+        `本机 payload 回收失败且自动恢复失败：${
+          rollbackError instanceof Error
+            ? rollbackError.message
+            : String(rollbackError)
+        }`
+      );
+    }
+    throw error;
+  }
+}
+
+function removeArchivedPayloads(moved: ArchivedHostPayload[]) {
+  const cleanupPendingPayloads: HostRuntime[] = [];
+  for (const item of moved) {
+    try {
+      rmSync(item.operationRoot, { recursive: true, force: true });
+    } catch {
+      if (existsSync(item.operationRoot)) {
+        cleanupPendingPayloads.push(item.runtime);
+      }
+    }
+  }
+  return cleanupPendingPayloads;
 }
 
 function stagePayload(
@@ -205,6 +400,9 @@ export class PahPluginPackageService extends BaseService {
   @Inject()
   pahLocalPluginBackupService: PahLocalPluginBackupService;
 
+  @Inject()
+  pahPublicLoginBrandingService: PahPublicLoginBrandingService;
+
   @Logger()
   logger: ILogger;
 
@@ -252,39 +450,16 @@ export class PahPluginPackageService extends BaseService {
       );
     }
     const plan = await this.pahPluginService.migrationPlan(info.moduleId);
-    let proof: PahMigrationBackupProof | undefined;
-    let backupCreated = false;
-    if (plan.backupRequired) {
-      try {
-        proof = this.pahLocalPluginBackupService.latestProof(
-          info.moduleId,
-          info.version
-        );
-      } catch {
-        const result =
-          await this.pahLocalPluginBackupService.createVerifiedBackup(
-            info.moduleId,
-            info.version
-          );
-        proof = result.proof;
-        backupCreated = true;
-      }
-    }
     const installation = await this.pahPluginService.installCompiled(
       info.moduleId,
-      plan.planId,
-      proof
+      plan.planId
     );
     this.logger.info(
-      `[phoenix-plugin] controlled install complete module=${
-        info.moduleId
-      } version=${info.version} backup=${proof?.backupId ?? 'not-required'}`
+      `[phoenix-plugin] controlled install complete module=${info.moduleId} version=${info.version}`
     );
     return {
       moduleId: info.moduleId,
       version: info.version,
-      backupId: proof?.backupId,
-      backupCreated,
       appliedMigrations: plan.items.filter(item => item.state === 'pending')
         .length,
       installation,
@@ -300,18 +475,46 @@ export class PahPluginPackageService extends BaseService {
         `插件必须处于已安装或已停用状态才能卸载，当前状态：${info.state}`
       );
     }
-    const backup = await this.pahLocalPluginBackupService.createVerifiedBackup(
-      info.moduleId,
-      info.version
-    );
-    const installation = await this.pahPluginService.uninstall(
-      info.moduleId,
-      backup.proof.backupId
-    );
+    const moved = archiveLocalPayloads(info.moduleId, 'uninstall');
+    let installation;
+    try {
+      installation = await this.pahPluginService.uninstall(info.moduleId);
+    } catch (error) {
+      try {
+        restoreArchivedPayloads(moved);
+      } catch (rollbackError) {
+        throw new CoolCommException(
+          `插件卸载状态提交失败且 payload 自动恢复失败：${
+            rollbackError instanceof Error
+              ? rollbackError.message
+              : String(rollbackError)
+          }`
+        );
+      }
+      throw error;
+    }
+    const removedPayloads = moved.map(item => item.runtime);
+    const cleanupPendingPayloads = removeArchivedPayloads(moved);
+    if (cleanupPendingPayloads.length > 0) {
+      this.logger.error(
+        `[phoenix-plugin] controlled uninstall archive cleanup pending module=${
+          info.moduleId
+        } payloads=${cleanupPendingPayloads.join(',')}`
+      );
+    }
     this.logger.info(
-      `[phoenix-plugin] controlled uninstall complete module=${info.moduleId} backup=${backup.proof.backupId}`
+      `[phoenix-plugin] controlled uninstall complete module=${
+        info.moduleId
+      } payloads=${removedPayloads.join(',') || 'none'}`
     );
-    return { backup: backup.backup, installation };
+    return {
+      moduleId: info.moduleId,
+      version: info.version,
+      removedPayloads,
+      restartRequired: removedPayloads.length > 0,
+      cleanupPendingPayloads,
+      installation,
+    };
   }
 
   /**
@@ -329,45 +532,18 @@ export class PahPluginPackageService extends BaseService {
         `只有已验证且尚未安装的插件包可以清理，当前状态：${info.state}`
       );
     }
-    if (!/^[a-z][a-z0-9-]*$/.test(info.moduleId)) {
-      throw new CoolCommException('插件模块 ID 不安全，拒绝清理本机装配');
-    }
-
-    const roots = resolveHostRoots();
-    const operationId = randomUUID();
-    const moved: Array<{
-      runtime: 'node' | 'vue';
-      target: string;
-      archived: string;
-    }> = [];
+    const moved = archiveLocalPayloads(info.moduleId, 'discard');
     try {
-      for (const runtime of ['node', 'vue'] as const) {
-        const root = roots[`${runtime}Root`];
-        const target = path.join(root, 'src', 'modules', info.moduleId);
-        if (!existsSync(target)) continue;
-        const stat = lstatSync(target);
-        if (stat.isSymbolicLink() || !stat.isDirectory()) {
-          throw new CoolCommException(
-            `${runtime} Host 的 ${info.moduleId} 不是安装器管理的普通目录，拒绝清理`
-          );
-        }
-        const archived = path.join(
-          root,
-          '.runtime',
-          'phoenix-plugin-discard',
-          operationId,
-          info.moduleId
-        );
-        mkdirSync(path.dirname(archived), { recursive: true });
-        renameSync(target, archived);
-        moved.push({ runtime, target, archived });
-      }
-
       const installation = await this.pahPluginService.discardVerifiedPackage(
         info.moduleId
       );
-      for (const item of moved) {
-        rmSync(item.archived, { recursive: true, force: true });
+      const cleanupPendingPayloads = removeArchivedPayloads(moved);
+      if (cleanupPendingPayloads.length > 0) {
+        this.logger.error(
+          `[phoenix-plugin] verified package archive cleanup pending module=${
+            info.moduleId
+          } payloads=${cleanupPendingPayloads.join(',')}`
+        );
       }
       this.logger.info(
         `[phoenix-plugin] verified package discarded module=${
@@ -380,21 +556,56 @@ export class PahPluginPackageService extends BaseService {
         moduleId: info.moduleId,
         version: info.version,
         removedPayloads: moved.map(item => item.runtime),
+        restartRequired: moved.length > 0,
+        cleanupPendingPayloads,
         installation,
       };
     } catch (error) {
-      for (const item of moved.reverse()) {
-        if (existsSync(item.archived) && !existsSync(item.target)) {
-          mkdirSync(path.dirname(item.target), { recursive: true });
-          renameSync(item.archived, item.target);
-        }
+      try {
+        restoreArchivedPayloads(moved);
+      } catch (rollbackError) {
+        throw new CoolCommException(
+          `已验证包状态提交失败且 payload 自动恢复失败：${
+            rollbackError instanceof Error
+              ? rollbackError.message
+              : String(rollbackError)
+          }`
+        );
       }
       throw error;
     }
   }
 
   async installLocalPackage(file: UploadedFile) {
+    const progress: PackageValidationProgress = {
+      current: '运行模式',
+      checks: [],
+    };
+    try {
+      return await this.installValidatedLocalPackage(file, progress);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.startsWith('插件包校验未通过｜')) throw error;
+      const passed = progress.checks.length
+        ? progress.checks.map(item => item.label).join('、')
+        : '无';
+      throw new CoolCommException(
+        `插件包校验未通过｜失败阶段：${progress.current}｜已通过：${passed}｜${message}`
+      );
+    }
+  }
+
+  private async installValidatedLocalPackage(
+    file: UploadedFile,
+    progress: PackageValidationProgress
+  ) {
     this.requireLocalPackageMode();
+    progress.checks.push({
+      id: 'runtime-mode',
+      label: '运行模式',
+      detail: '本地受控包模式可用',
+    });
+    progress.current = '上传边界';
     const filename = path.basename(file?.filename || '');
     if (!filename.endsWith(PHOENIX_PACKAGE_SUFFIX)) {
       throw new CoolCommException(
@@ -412,6 +623,13 @@ export class PahPluginPackageService extends BaseService {
     if (!packageBytes.length || packageBytes.length > MAX_PACKAGE_BYTES) {
       throw new CoolCommException('Phoenix 插件包大小必须在 1B～100MiB 之间');
     }
+    const packageSha256 = sha256(packageBytes);
+    progress.checks.push({
+      id: 'upload-boundary',
+      label: '上传边界',
+      detail: `${filename} · ${packageBytes.length} bytes`,
+    });
+    progress.current = 'ZIP 与路径安全';
 
     this.logger.info(
       `[phoenix-plugin] inspect start file=${filename} bytes=${packageBytes.length}`
@@ -441,6 +659,38 @@ export class PahPluginPackageService extends BaseService {
       entries.set(name, entry);
     }
 
+    progress.checks.push({
+      id: 'archive-safety',
+      label: 'ZIP 与路径安全',
+      detail: `${entries.size} 个普通文件条目`,
+    });
+    progress.current = '根目录契约';
+    const missingRootEntries = [
+      'plugin.json',
+      'manifest.json',
+      'integrity.json',
+    ].filter(name => !entries.has(name));
+    const obsoleteEntries = [...entries.keys()].filter(
+      name =>
+        name.startsWith('payload/midway/') ||
+        ['payload/manifest.json', 'payload/package.json'].includes(name)
+    );
+    const rootIssues = [
+      missingRootEntries.length
+        ? `缺少根文件：${missingRootEntries.join('、')}`
+        : '',
+      obsoleteEntries.length ? `包含旧布局：${obsoleteEntries.join('、')}` : '',
+    ].filter(Boolean);
+    if (rootIssues.length) {
+      throw new CoolCommException(rootIssues.join('；'));
+    }
+    progress.checks.push({
+      id: 'root-contract',
+      label: '根目录契约',
+      detail: 'plugin / manifest / integrity 完整，未发现旧 payload 布局',
+    });
+    progress.current = '身份与 Manifest';
+
     const metadata = parseJson<PackageMetadata>(entries, 'plugin.json');
     const manifest = parseJson<PahPluginManifest>(entries, 'manifest.json');
     const integrity = parseJson<{
@@ -467,6 +717,13 @@ export class PahPluginPackageService extends BaseService {
         'Phoenix 插件包身份、安装边界或源码状态不合法'
       );
     }
+
+    progress.checks.push({
+      id: 'identity-manifest',
+      label: '身份与 Manifest',
+      detail: `${manifest.moduleId}@${manifest.version}`,
+    });
+    progress.current = '完整性与迁移';
 
     const expectedFiles = [...entries.keys()]
       .filter(name => name !== 'integrity.json')
@@ -516,6 +773,15 @@ export class PahPluginPackageService extends BaseService {
       }
     }
 
+    progress.checks.push({
+      id: 'integrity-migrations',
+      label: '完整性与迁移',
+      detail: `${expectedFiles.length} 个文件，${
+        (manifest.migrations || []).length
+      } 条迁移`,
+    });
+    progress.current = 'Node/Vue payload';
+
     const payloads = metadata.payloads || [];
     const expectedPayloads = new Map([
       [
@@ -538,6 +804,19 @@ export class PahPluginPackageService extends BaseService {
         'Phoenix 插件包必须精确包含 Node/Vue 两个 payload'
       );
     }
+    for (const [runtime, expected] of expectedPayloads) {
+      if (!entries.has(`${expected.source}/config.ts`)) {
+        throw new CoolCommException(
+          `Phoenix 插件包缺少 ${runtime} 模块入口：${expected.source}/config.ts`
+        );
+      }
+    }
+    progress.checks.push({
+      id: 'runtime-payloads',
+      label: 'Node/Vue payload',
+      detail: '两个运行时入口和安装映射完整',
+    });
+    progress.current = 'Host 装配与登记';
     const { nodeRoot, vueRoot } = resolveHostRoots();
     const roots = { node: nodeRoot, vue: vueRoot };
     const staged: Array<{
@@ -600,9 +879,16 @@ export class PahPluginPackageService extends BaseService {
       throw error;
     }
 
+    let brandingReceiptCreated = false;
     try {
+      const brandingReceipt =
+        this.pahPublicLoginBrandingService.recordVerifiedPackage(
+          manifest,
+          packageSha256,
+          path.join(vueRoot, 'src', 'modules', manifest.moduleId)
+        );
+      brandingReceiptCreated = brandingReceipt.receiptCreated === true;
       const installation = await this.pahPluginService.register(manifest);
-      const packageSha256 = sha256(packageBytes);
       this.logger.info(
         `[phoenix-plugin] install staged module=${manifest.moduleId} version=${manifest.version} files=${entries.size} sha256=${packageSha256}`
       );
@@ -613,9 +899,26 @@ export class PahPluginPackageService extends BaseService {
         fileCount: entries.size,
         packageSha256,
         restartRequired: staged.some(item => item.installed),
+        validationChecks: [
+          ...progress.checks,
+          {
+            id: 'host-stage-register',
+            label: 'Host 装配与登记',
+            detail: staged.some(item => item.installed)
+              ? '新 payload 已装配，manifest 已登记'
+              : '不可变 payload 已复用，manifest 已登记',
+          },
+        ],
         installation,
       };
     } catch (error) {
+      if (brandingReceiptCreated) {
+        this.pahPublicLoginBrandingService.removeVerifiedPackageReceipt(
+          manifest.moduleId,
+          manifest.version,
+          packageSha256
+        );
+      }
       for (const item of staged.reverse()) {
         if (item.installed && !item.reused) {
           rmSync(item.target, { recursive: true, force: true });

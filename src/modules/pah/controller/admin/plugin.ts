@@ -4,6 +4,7 @@ import { PahPluginInstallationEntity } from '../../entity/plugin';
 import { PahPluginManifest } from '../../interface/plugin';
 import { PahPluginService } from '../../service/plugin';
 import { PahPluginPackageService } from '../../service/package';
+import { PahPublicLoginBrandingService } from '../../service/public-login-branding';
 
 /** Phoenix 业务插件管理。 */
 @Provide()
@@ -23,6 +24,42 @@ export class PahPluginController extends BaseController {
 
   @Inject()
   pahPluginPackageService: PahPluginPackageService;
+
+  @Inject()
+  pahPublicLoginBrandingService: PahPublicLoginBrandingService;
+
+  @Get('/public-login-branding/status', {
+    summary: '查询当前公开登录品牌快照',
+  })
+  async publicLoginBrandingStatus() {
+    return this.ok(this.pahPublicLoginBrandingService.currentStatus());
+  }
+
+  @Post('/public-login-branding/select', {
+    summary: '选择已启用的公开登录品牌插件',
+  })
+  async selectPublicLoginBranding(
+    @Body('moduleId') moduleId: string,
+    @Body('expectedRevision') expectedRevision: string
+  ) {
+    return this.ok(
+      await this.pahPublicLoginBrandingService.select(
+        moduleId,
+        expectedRevision
+      )
+    );
+  }
+
+  @Post('/public-login-branding/reset', {
+    summary: '恢复 Host 默认公开登录品牌',
+  })
+  async resetPublicLoginBranding(
+    @Body('expectedRevision') expectedRevision: string
+  ) {
+    return this.ok(
+      await this.pahPublicLoginBrandingService.reset(expectedRevision)
+    );
+  }
 
   @Post('/package', { summary: '本地校验并装配 .phoenix.cool 插件包' })
   async package(@Files() files) {
@@ -48,7 +85,7 @@ export class PahPluginController extends BaseController {
   }
 
   @Post('/local-controlled-install', {
-    summary: '使用服务端计划并按需自动备份执行本地受控安装',
+    summary: '使用服务端一次性计划执行本地受控安装',
   })
   async localControlledInstall(@Body('moduleId') moduleId: string) {
     return this.ok(
@@ -57,7 +94,7 @@ export class PahPluginController extends BaseController {
   }
 
   @Post('/local-controlled-uninstall', {
-    summary: '创建可信备份后卸载本地插件并保留数据',
+    summary: '卸载本地插件并保留数据',
   })
   async localControlledUninstall(@Body('moduleId') moduleId: string) {
     return this.ok(

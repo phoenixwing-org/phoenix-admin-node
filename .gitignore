@@ -8,6 +8,7 @@ yarn.lock
 coverage/
 dist/
 src/index.ts
+src/entities.ts
 .idea/
 run/
 .runtime/

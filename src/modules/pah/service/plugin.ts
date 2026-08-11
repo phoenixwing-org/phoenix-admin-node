@@ -11,10 +11,7 @@ import { PahPluginMenuContributionEntity } from '../entity/menu-contribution';
 import { PahPluginInstallationEntity } from '../entity/plugin';
 import { PahPluginRoleGrantEntity } from '../entity/role-grant';
 import { PahPluginMigrationRecordEntity } from '../entity/migration-record';
-import {
-  PahMigrationBackupProof,
-  PahPluginMigrationService,
-} from './migration';
+import { PahPluginMigrationService } from './migration';
 import { PahNavigationService } from './navigation';
 import { PahDictionaryService } from './dictionary';
 import {
@@ -24,6 +21,7 @@ import {
   PahPluginManifest,
   validatePahPluginManifest,
 } from '../interface/plugin';
+import { PahPublicLoginBrandingService } from './public-login-branding';
 
 function stateTime() {
   return new Date().toISOString();
@@ -66,6 +64,9 @@ export class PahPluginService extends BaseService {
 
   @Inject()
   pahDictionaryService: PahDictionaryService;
+
+  @Inject()
+  pahPublicLoginBrandingService: PahPublicLoginBrandingService;
 
   async register(manifest: PahPluginManifest) {
     this.requireHostAdmin();
@@ -126,7 +127,7 @@ export class PahPluginService extends BaseService {
     const info = await this.getRequired(moduleId);
     if (info.manifest.migrations.length > 0) {
       throw new CoolCommException(
-        '包含 DDL 的插件必须经受控发布流程 dry-run、备份并安装'
+        '包含 DDL 的插件必须经受控发布流程 dry-run 并安装'
       );
     }
     const plan = await this.pahPluginMigrationService.dryRun(info);
@@ -140,17 +141,9 @@ export class PahPluginService extends BaseService {
     );
   }
 
-  /** 仅供编译期发布编排调用；控制器不接收备份证明或制品路径。 */
-  async installCompiled(
-    moduleId: string,
-    planId: string,
-    backupProof?: PahMigrationBackupProof
-  ) {
-    return this.installPrepared(
-      await this.getRequired(moduleId),
-      planId,
-      backupProof
-    );
+  /** 仅供编译期发布编排调用；控制器不接收制品路径。 */
+  async installCompiled(moduleId: string, planId: string) {
+    return this.installPrepared(await this.getRequired(moduleId), planId);
   }
 
   async enable(
@@ -189,29 +182,39 @@ export class PahPluginService extends BaseService {
     this.requireHostAdmin();
     const info = await this.getRequired(moduleId);
     this.requireTransition(info, 'disabled');
-    await this.removeNavigationContributions(moduleId, true);
+    const restoreBranding =
+      await this.pahPublicLoginBrandingService.deactivateForLifecycle(moduleId);
     try {
+      await this.removeNavigationContributions(moduleId, true);
       return await this.transition(info, 'disabled');
     } catch (error) {
-      await this.applyNavigationContributions(info);
+      try {
+        await this.applyNavigationContributions(info);
+      } finally {
+        await restoreBranding();
+      }
       throw error;
     }
   }
 
-  async uninstall(moduleId: string, backupId: string) {
+  async uninstall(moduleId: string, backupId?: string) {
     this.requireHostAdmin();
     const info = await this.getRequired(moduleId);
     if (info.state === 'enabled') {
       throw new CoolCommException('卸载前必须先停用插件');
     }
-    if (info.manifest.uninstall.requiresBackup && !backupId?.trim()) {
-      throw new CoolCommException('卸载前必须提供可恢复的备份标识');
+    const restoreBranding =
+      await this.pahPublicLoginBrandingService.deactivateForLifecycle(moduleId);
+    let next: PahPluginInstallationEntity;
+    try {
+      next = await this.transition(info, 'uninstalled', {
+        dataRetained: true,
+        ...(backupId?.trim() ? { lastBackupId: backupId.trim() } : {}),
+      });
+    } catch (error) {
+      await restoreBranding();
+      throw error;
     }
-
-    const next = await this.transition(info, 'uninstalled', {
-      dataRetained: true,
-      lastBackupId: backupId.trim(),
-    });
     return {
       ...next,
       retainedTables: next.manifest.dataOwnership.tables,
@@ -293,8 +296,7 @@ export class PahPluginService extends BaseService {
 
   private async installPrepared(
     info: PahPluginInstallationEntity,
-    planId: string,
-    backupProof?: PahMigrationBackupProof
+    planId: string
   ) {
     this.requireTransition(info, 'staged');
     const prepared = this.pahPluginMigrationService.claimPlan(
@@ -306,8 +308,7 @@ export class PahPluginService extends BaseService {
     try {
       return await this.pahPluginMigrationService.executeClaimed(
         info.moduleId,
-        prepared,
-        backupProof
+        prepared
       );
     } catch (error) {
       await this.markInstallationFailed(staged, error);

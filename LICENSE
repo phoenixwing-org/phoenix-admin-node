@@ -31,3 +31,13 @@ MIT 许可证
 上述版权声明和本许可声明应包含在软件的所有副本或主要部分中。
 
 本软件按“原样”提供，不提供任何明示或暗示的担保，包括但不限于对适销性、特定用途适用性和非侵权的担保。在任何情况下，作者或版权持有人均不对因软件或软件使用或其他交易而产生的任何索赔、损害或其他责任负责，无论是在合同诉讼、侵权诉讼或其他诉讼中。
+
+---
+
+Phoenix Admin Node maintenance modifications
+Copyright 2024–2026 PhoenixWing contributors
+
+PhoenixWing maintenance modifications and new files in this repository are
+distributed under the same MIT License above. The original Cool Admin
+copyright notices, license terms, attribution, and Git history remain in
+effect and are not replaced by this appendix.
