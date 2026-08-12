@@ -30,6 +30,7 @@ function serviceFixture() {
         token: { expire: 7200, refreshExpire: 86400 },
       },
     },
+    ctx: { ip: '127.0.0.1' },
   });
   jest.spyOn(service, 'captchaCheck').mockResolvedValue(true);
   jest
@@ -55,6 +56,57 @@ describe('Admin 密码登录会话签发', () => {
       'admin:token:refresh:7',
       'refresh-token'
     );
+  });
+
+  it('只在显式 local + loopback 条件下跳过验证码', async () => {
+    const originalNodeEnv = process.env.NODE_ENV;
+    const originalDisableCaptcha = process.env.PAH_DEV_DISABLE_CAPTCHA;
+    try {
+      process.env.PAH_DEV_DISABLE_CAPTCHA = 'true';
+      process.env.NODE_ENV = 'local';
+      const local = serviceFixture();
+      expect(local.captchaRequired()).toBe(false);
+
+      local.ctx.ip = '192.0.2.10';
+      expect(local.captchaRequired()).toBe(true);
+
+      local.ctx.ip = '127.0.0.1';
+      process.env.NODE_ENV = 'production';
+      expect(local.captchaRequired()).toBe(true);
+    } finally {
+      process.env.NODE_ENV = originalNodeEnv;
+      if (originalDisableCaptcha === undefined) {
+        delete process.env.PAH_DEV_DISABLE_CAPTCHA;
+      } else {
+        process.env.PAH_DEV_DISABLE_CAPTCHA = originalDisableCaptcha;
+      }
+    }
+  });
+
+  it('本地免验证码登录不会读取验证码缓存', async () => {
+    const originalNodeEnv = process.env.NODE_ENV;
+    const originalDisableCaptcha = process.env.PAH_DEV_DISABLE_CAPTCHA;
+    try {
+      process.env.NODE_ENV = 'local';
+      process.env.PAH_DEV_DISABLE_CAPTCHA = 'true';
+      const service = serviceFixture();
+      const captchaCheck = jest.spyOn(service, 'captchaCheck');
+
+      await expect(
+        service.login({
+          username: loginInput.username,
+          password: loginInput.password,
+        })
+      ).resolves.toMatchObject({ token: 'admin-token' });
+      expect(captchaCheck).not.toHaveBeenCalled();
+    } finally {
+      process.env.NODE_ENV = originalNodeEnv;
+      if (originalDisableCaptcha === undefined) {
+        delete process.env.PAH_DEV_DISABLE_CAPTCHA;
+      } else {
+        process.env.PAH_DEV_DISABLE_CAPTCHA = originalDisableCaptcha;
+      }
+    }
   });
 
   it('禁用用户与无角色用户都拒绝，且不会签发令牌', async () => {

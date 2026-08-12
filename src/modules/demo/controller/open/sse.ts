@@ -2,7 +2,7 @@ import { CoolController, BaseController } from '@cool-midway/core';
 import { Get, Inject } from '@midwayjs/core';
 import { PluginService } from '../../../plugin/service/info';
 import { PassThrough } from 'stream';
-import { IMidwayKoaContext } from '@midwayjs/koa';
+import type { IMidwayKoaContext } from '@midwayjs/koa';
 
 /**
  * 事件流 服务端主动推送

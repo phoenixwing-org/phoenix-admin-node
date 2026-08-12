@@ -1,5 +1,12 @@
-import { App, IMidwayApplication, Scope, ScopeEnum } from '@midwayjs/core';
-import { ALL, Config, Inject, Provide } from '@midwayjs/core';
+import {
+  AllConfig,
+  IMidwayApplication,
+  Inject,
+  MainApp,
+  Provide,
+  Scope,
+  ScopeEnum,
+} from '@midwayjs/core';
 import { BaseService, CoolCommException } from '@cool-midway/core';
 import { InjectEntityModel } from '@midwayjs/typeorm';
 import { In, Repository } from 'typeorm';
@@ -30,13 +37,10 @@ export class BaseSysMenuService extends BaseService {
   @InjectEntityModel(BaseSysRoleMenuEntity)
   baseSysRoleMenuEntity: Repository<BaseSysRoleMenuEntity>;
 
-  @Inject()
-  baseSysPermsService: BaseSysPermsService;
-
-  @Config(ALL)
+  @AllConfig()
   config;
 
-  @App()
+  @MainApp()
   app: IMidwayApplication;
 
   /**
@@ -167,17 +171,20 @@ export class BaseSysMenuService extends BaseService {
    * @param menuId
    */
   async refreshPerms(menuId) {
+    const baseSysPermsService = await this.app
+      .getApplicationContext()
+      .getAsync(BaseSysPermsService);
     const find = this.baseSysRoleMenuEntity.createQueryBuilder('a');
     find.leftJoinAndSelect(BaseSysUserRoleEntity, 'b', 'a.roleId = b.roleId');
     find.where('a.menuId = :menuId', { menuId: menuId });
     find.select('b.userId', 'userId');
     const users = await find.getRawMany();
     // 刷新admin权限
-    await this.baseSysPermsService.refreshPerms(1);
+    await baseSysPermsService.refreshPerms(1);
     if (!_.isEmpty(users)) {
       // 刷新其他权限
       for (const user of _.uniqBy(users, 'userId')) {
-        await this.baseSysPermsService.refreshPerms(user.userId);
+        await baseSysPermsService.refreshPerms(user.userId);
       }
     }
   }

@@ -1,4 +1,5 @@
 import { BaseService, CoolCommException } from '@cool-midway/core';
+import { execFileSync } from 'child_process';
 import { createHash, randomUUID } from 'crypto';
 import {
   existsSync,
@@ -318,6 +319,49 @@ function removeArchivedPayloads(moved: ArchivedHostPayload[]) {
   return cleanupPendingPayloads;
 }
 
+function syncHostRuntimeEntities(nodeRoot: string) {
+  const script = path.join(nodeRoot, 'scripts/pah-sync-runtime-entities.cjs');
+  if (!existsSync(script)) {
+    throw new CoolCommException(`Admin Node 缺少实体同步器：${script}`);
+  }
+  try {
+    return execFileSync(process.execPath, [script, '--root', nodeRoot], {
+      cwd: nodeRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 15_000,
+    }).trim();
+  } catch (error) {
+    const detail =
+      error && typeof error === 'object' && 'stderr' in error
+        ? String((error as { stderr?: unknown }).stderr ?? '').trim()
+        : '';
+    throw new CoolCommException(
+      `Admin Node 实体同步失败${detail ? `：${detail}` : ''}`
+    );
+  }
+}
+
+function restoreArchivedPayloadsAndEntities(
+  moved: ArchivedHostPayload[],
+  nodeRoot: string,
+  originalError: unknown
+): never {
+  try {
+    restoreArchivedPayloads(moved);
+    syncHostRuntimeEntities(nodeRoot);
+  } catch (rollbackError) {
+    throw new CoolCommException(
+      `插件 payload 或实体清单自动恢复失败：${
+        rollbackError instanceof Error
+          ? rollbackError.message
+          : String(rollbackError)
+      }`
+    );
+  }
+  throw originalError;
+}
+
 function stagePayload(
   entries: Map<string, any>,
   source: string,
@@ -476,22 +520,13 @@ export class PahPluginPackageService extends BaseService {
       );
     }
     const moved = archiveLocalPayloads(info.moduleId, 'uninstall');
+    const { nodeRoot } = resolveHostRoots();
     let installation;
     try {
+      syncHostRuntimeEntities(nodeRoot);
       installation = await this.pahPluginService.uninstall(info.moduleId);
     } catch (error) {
-      try {
-        restoreArchivedPayloads(moved);
-      } catch (rollbackError) {
-        throw new CoolCommException(
-          `插件卸载状态提交失败且 payload 自动恢复失败：${
-            rollbackError instanceof Error
-              ? rollbackError.message
-              : String(rollbackError)
-          }`
-        );
-      }
-      throw error;
+      restoreArchivedPayloadsAndEntities(moved, nodeRoot, error);
     }
     const removedPayloads = moved.map(item => item.runtime);
     const cleanupPendingPayloads = removeArchivedPayloads(moved);
@@ -533,7 +568,9 @@ export class PahPluginPackageService extends BaseService {
       );
     }
     const moved = archiveLocalPayloads(info.moduleId, 'discard');
+    const { nodeRoot } = resolveHostRoots();
     try {
+      syncHostRuntimeEntities(nodeRoot);
       const installation = await this.pahPluginService.discardVerifiedPackage(
         info.moduleId
       );
@@ -561,18 +598,7 @@ export class PahPluginPackageService extends BaseService {
         installation,
       };
     } catch (error) {
-      try {
-        restoreArchivedPayloads(moved);
-      } catch (rollbackError) {
-        throw new CoolCommException(
-          `已验证包状态提交失败且 payload 自动恢复失败：${
-            rollbackError instanceof Error
-              ? rollbackError.message
-              : String(rollbackError)
-          }`
-        );
-      }
-      throw error;
+      restoreArchivedPayloadsAndEntities(moved, nodeRoot, error);
     }
   }
 
@@ -881,6 +907,7 @@ export class PahPluginPackageService extends BaseService {
 
     let brandingReceiptCreated = false;
     try {
+      syncHostRuntimeEntities(nodeRoot);
       const brandingReceipt =
         this.pahPublicLoginBrandingService.recordVerifiedPackage(
           manifest,
@@ -923,6 +950,17 @@ export class PahPluginPackageService extends BaseService {
         if (item.installed && !item.reused) {
           rmSync(item.target, { recursive: true, force: true });
         }
+      }
+      try {
+        syncHostRuntimeEntities(nodeRoot);
+      } catch (rollbackError) {
+        throw new CoolCommException(
+          `插件登记失败，且实体清单自动恢复失败：${
+            rollbackError instanceof Error
+              ? rollbackError.message
+              : String(rollbackError)
+          }`
+        );
       }
       this.logger.error(
         `[phoenix-plugin] install failed module=${manifest.moduleId} message=${

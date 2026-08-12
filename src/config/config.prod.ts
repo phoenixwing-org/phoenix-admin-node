@@ -2,12 +2,12 @@ import { CoolConfig } from '@cool-midway/core';
 import { MidwayConfig } from '@midwayjs/core';
 import { entities } from '../entities';
 import { TenantSubscriber } from '../modules/base/db/tenant';
+import { resolveProductionDatabaseSwitches } from './database-switches';
 
 // 正式构建默认保持关闭；安装器可在全新数据库的第一次启动中显式开启，
 // 从而复用 Cool 原生 db.json / menu.json 初始化流程。初始化完成后的常规
 // 启动继续传 false，避免对既有数据库执行 synchronize 或重复导入。
-const synchronize = process.env.PAH_DB_SYNCHRONIZE === 'true';
-const initialize = process.env.PAH_DB_INITIALIZE === 'true';
+const { synchronize, initialize } = resolveProductionDatabaseSwitches();
 
 /**
  * 本地开发 npm run prod 读取的配置文件

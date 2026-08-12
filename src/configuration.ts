@@ -1,10 +1,11 @@
 import * as orm from '@midwayjs/typeorm';
 import {
   Configuration,
-  App,
+  CommonJSFileDetector,
   IMidwayApplication,
   Inject,
   ILogger,
+  MainApp,
   MidwayWebRouterService,
 } from '@midwayjs/core';
 import * as koa from '@midwayjs/koa';
@@ -15,6 +16,7 @@ import * as staticFile from '@midwayjs/static-file';
 import * as cron from '@midwayjs/cron';
 import * as DefaultConfig from './config/config.default';
 import * as LocalConfig from './config/config.local';
+import * as Midway4Config from './config/config.midway4';
 import * as ProdConfig from './config/config.prod';
 import * as cool from '@cool-midway/core';
 import * as upload from '@midwayjs/upload';
@@ -23,6 +25,9 @@ import { PahPublicLoginBrandingService } from './modules/pah/service/public-logi
 // import * as rpc from '@cool-midway/rpc';
 
 @Configuration({
+  detector: new CommonJSFileDetector({
+    conflictCheck: true,
+  }),
   imports: [
     // https://koajs.com/
     koa,
@@ -46,19 +51,20 @@ import { PahPublicLoginBrandingService } from './modules/pah/service/public-logi
     // task,
     {
       component: info,
-      enabledEnvironment: ['local', 'prod'],
+      enabledEnvironment: ['local', 'midway4', 'prod'],
     },
   ],
   importConfigs: [
     {
       default: DefaultConfig,
       local: LocalConfig,
+      midway4: Midway4Config,
       prod: ProdConfig,
     },
   ],
 })
 export class MainConfiguration {
-  @App()
+  @MainApp()
   app: IMidwayApplication;
 
   @Inject()
@@ -67,12 +73,12 @@ export class MainConfiguration {
   @Inject()
   logger: ILogger;
 
-  @Inject()
-  pahPublicLoginBrandingService: PahPublicLoginBrandingService;
-
   async onReady() {
     try {
-      await this.pahPublicLoginBrandingService.reconcileOnStartup();
+      const pahPublicLoginBrandingService = await this.app
+        .getApplicationContext()
+        .getAsync(PahPublicLoginBrandingService);
+      await pahPublicLoginBrandingService.reconcileOnStartup();
     } catch (error) {
       this.logger.error(
         `[public-login-branding] startup reconcile failed; endpoint will use Host default: ${

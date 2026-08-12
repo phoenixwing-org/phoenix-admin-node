@@ -1,5 +1,5 @@
 import {
-  App,
+  MainApp,
   Config,
   Inject,
   Logger,
@@ -37,7 +37,7 @@ export class TaskBullService extends BaseService {
   @Inject()
   taskInfoQueue: TaskInfoQueue;
 
-  @App()
+  @MainApp()
   app: IMidwayApplication;
 
   @Inject()

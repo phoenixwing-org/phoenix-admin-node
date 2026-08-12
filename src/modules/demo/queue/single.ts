@@ -1,13 +1,13 @@
 import { BaseCoolQueue, CoolQueue } from '@cool-midway/task';
 import { IMidwayApplication } from '@midwayjs/core';
-import { App } from '@midwayjs/core';
+import { MainApp } from '@midwayjs/core';
 
 /**
  * 单例队列，cluster 或 集群模式下 只会有一个实例消费数据
  */
 @CoolQueue({ type: 'single' })
 export class DemoSingleQueue extends BaseCoolQueue {
-  @App()
+  @MainApp()
   app: IMidwayApplication;
 
   async data(job: any, done: any): Promise<void> {

@@ -1,5 +1,5 @@
 import {
-  App,
+  MainApp,
   Config,
   Inject,
   Logger,
@@ -35,7 +35,7 @@ export class TaskLocalService extends BaseService {
   @InjectEntityModel(TaskLogEntity)
   taskLogEntity: Repository<TaskLogEntity>;
 
-  @App()
+  @MainApp()
   app: IMidwayApplication;
 
   @Inject()

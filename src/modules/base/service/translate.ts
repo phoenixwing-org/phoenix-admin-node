@@ -3,7 +3,7 @@ import { InjectEntityModel } from '@midwayjs/typeorm';
 import { Repository } from 'typeorm';
 import { BaseSysMenuEntity } from '../entity/sys/menu';
 import {
-  App,
+  MainApp,
   Config,
   ILogger,
   IMidwayApplication,
@@ -35,7 +35,7 @@ export class BaseTranslateService {
   // 基础路径
   basePath: string;
 
-  @App()
+  @MainApp()
   app: IMidwayApplication;
 
   @Inject()

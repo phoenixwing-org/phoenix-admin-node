@@ -22,14 +22,14 @@
 以下路径与分支专用于干净安装验证，不复用带本机业务插件 symlink 的开发目录：
 
 ```shell
-mkdir -p /Users/kathy/phoenix/.worktrees/phoenix-admin-clean-validation
+mkdir -p <workspace>/.worktrees/phoenix-admin-clean-validation
 
-git -C /Users/kathy/phoenix/phoenix-admin-node worktree add \
-  /Users/kathy/phoenix/.worktrees/phoenix-admin-clean-validation/node \
+git -C <workspace>/phoenix-admin-node worktree add \
+  <workspace>/.worktrees/phoenix-admin-clean-validation/node \
   codex/admin-clean-install-node
 
-git -C /Users/kathy/phoenix/phoenix-admin-vue worktree add \
-  /Users/kathy/phoenix/.worktrees/phoenix-admin-clean-validation/vue \
+git -C <workspace>/phoenix-admin-vue worktree add \
+  <workspace>/.worktrees/phoenix-admin-clean-validation/vue \
   codex/admin-clean-install-vue
 ```
 
@@ -41,16 +41,16 @@ git -C /Users/kathy/phoenix/phoenix-admin-vue worktree add \
 首次安装依赖：
 
 ```shell
-pnpm --dir /Users/kathy/phoenix/.worktrees/phoenix-admin-clean-validation/node install --frozen-lockfile
-pnpm --dir /Users/kathy/phoenix/.worktrees/phoenix-admin-clean-validation/vue install --frozen-lockfile
+pnpm --dir <workspace>/.worktrees/phoenix-admin-clean-validation/node install --frozen-lockfile
+pnpm --dir <workspace>/.worktrees/phoenix-admin-clean-validation/vue install --frozen-lockfile
 ```
 
 随后只需一条命令：
 
 ```shell
-pnpm --dir /Users/kathy/phoenix/.worktrees/phoenix-admin-clean-validation/node \
+pnpm --dir <workspace>/.worktrees/phoenix-admin-clean-validation/node \
   admin:clean-validation -- \
-  --vue-root /Users/kathy/phoenix/.worktrees/phoenix-admin-clean-validation/vue \
+  --vue-root <workspace>/.worktrees/phoenix-admin-clean-validation/vue \
   --database phoenix_admin_clean_validation_20260805 \
   --api-port 8201 \
   --web-port 9100

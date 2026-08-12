@@ -1,8 +1,8 @@
 import { BaseService, CoolCommException } from '@cool-midway/core';
 import {
-  App,
   IMidwayApplication,
   Inject,
+  MainApp,
   Provide,
   Scope,
   ScopeEnum,
@@ -124,7 +124,7 @@ export class PahCompiledPluginRegistry {
     PahCompiledPluginRegistration
   >();
 
-  @App()
+  @MainApp()
   app: IMidwayApplication;
 
   /** @internal 仅供 Host 通用装配器与测试使用；插件消费者使用 descriptor。 */

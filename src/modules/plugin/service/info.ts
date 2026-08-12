@@ -7,7 +7,7 @@ import { InjectEntityModel } from '@midwayjs/typeorm';
 import { Equal, In, Not, Repository } from 'typeorm';
 import { PluginInfoEntity } from '../entity/info';
 import {
-  App,
+  MainApp,
   Config,
   ILogger,
   IMidwayApplication,
@@ -16,6 +16,8 @@ import {
   InjectClient,
   Logger,
   Provide,
+  Scope,
+  ScopeEnum,
 } from '@midwayjs/core';
 import * as _ from 'lodash';
 import { PluginInfo } from '../interface';
@@ -34,6 +36,7 @@ import { pPluginPath } from '../../../comm/path';
  * 插件信息
  */
 @Provide()
+@Scope(ScopeEnum.Request, { allowDowngrade: true })
 export class PluginService extends BaseService {
   @InjectEntityModel(PluginInfoEntity)
   pluginInfoEntity: Repository<PluginInfoEntity>;
@@ -41,7 +44,7 @@ export class PluginService extends BaseService {
   @Inject()
   ctx: IMidwayContext;
 
-  @App()
+  @MainApp()
   app: IMidwayApplication;
 
   @Inject()

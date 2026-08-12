@@ -1,4 +1,11 @@
-import { App, Init, Inject, Provide, Scope, ScopeEnum } from '@midwayjs/core';
+import {
+  MainApp,
+  Init,
+  Inject,
+  Provide,
+  Scope,
+  ScopeEnum,
+} from '@midwayjs/core';
 import { BaseService } from '@cool-midway/core';
 import { InjectEntityModel } from '@midwayjs/typeorm';
 import { Repository } from 'typeorm';
@@ -23,7 +30,7 @@ export class TaskInfoService extends BaseService {
 
   type: 'local' | 'bull' = 'local';
 
-  @App()
+  @MainApp()
   app: IMidwayApplication;
 
   @Inject()

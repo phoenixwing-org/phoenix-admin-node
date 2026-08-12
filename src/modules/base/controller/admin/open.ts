@@ -92,7 +92,10 @@ export class BaseOpenController extends BaseController {
   @CoolTag(TagTypes.IGNORE_TOKEN)
   @Get('/login-policy', { summary: '后台登录方式与就绪状态' })
   async loginPolicy() {
-    return this.ok(this.pahIdentityService.loginPolicy());
+    return this.ok({
+      ...this.pahIdentityService.loginPolicy(),
+      captchaRequired: this.baseSysLoginService.captchaRequired(),
+    });
   }
 
   /**

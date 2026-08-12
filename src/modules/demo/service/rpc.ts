@@ -1,4 +1,4 @@
-import { App, Provide } from '@midwayjs/core';
+import { MainApp, Provide } from '@midwayjs/core';
 import { DemoGoodsEntity } from '../entity/goods';
 import { IMidwayApplication, Inject } from '@midwayjs/core';
 import {
@@ -15,7 +15,7 @@ import { QueryRunner } from 'typeorm';
   method: ['info', 'add', 'page'],
 })
 export class DemoRpcService extends BaseRpcService {
-  @App()
+  @MainApp()
   app: IMidwayApplication;
 
   @Inject()

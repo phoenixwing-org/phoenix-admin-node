@@ -4,6 +4,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   readdirSync,
   rmSync,
   symlinkSync,
@@ -133,6 +134,10 @@ function createPackage(output: string) {
       Buffer.from('export default { module: "example-plugin" };\n'),
     ],
     [
+      `payload/node/${MODULE_ID}/entity/item.ts`,
+      Buffer.from('export class ExamplePluginItem {}\n'),
+    ],
+    [
       `payload/vue/${MODULE_ID}/config.ts`,
       Buffer.from('export default { module: "example-plugin" };\n'),
     ],
@@ -190,6 +195,18 @@ describe('Phoenix 插件包本地装配', () => {
         JSON.stringify({ name: `phoenix-admin-${runtime}` })
       );
     }
+    const nodeRoot = path.join(root, 'node');
+    mkdirSync(path.join(nodeRoot, 'scripts'), { recursive: true });
+    fs.copyFileSync(
+      path.join(process.cwd(), 'scripts', 'pah-sync-runtime-entities.cjs'),
+      path.join(nodeRoot, 'scripts', 'pah-sync-runtime-entities.cjs')
+    );
+    mkdirSync(path.join(nodeRoot, 'src', 'modules'), { recursive: true });
+    writeFileSync(
+      path.join(nodeRoot, 'src', 'entities.ts'),
+      `import { pluginEntities } from './entities.plugin';\n` +
+        `export const entities = [...pluginEntities];\n`
+    );
     process.env.NODE_ENV = 'local';
     process.env.PHOENIX_ADMIN_NODE_ROOT = path.join(root, 'node');
     process.env.PHOENIX_ADMIN_VUE_ROOT = path.join(root, 'vue');
@@ -253,7 +270,7 @@ describe('Phoenix 插件包本地装配', () => {
       expect.objectContaining({
         moduleId: MODULE_ID,
         version: '0.1.0',
-        fileCount: 5,
+        fileCount: 6,
         restartRequired: true,
         validationChecks: expect.arrayContaining([
           expect.objectContaining({ id: 'archive-safety' }),
@@ -271,6 +288,9 @@ describe('Phoenix 插件包本地装配', () => {
     expect(
       existsSync(path.join(root, 'vue', 'src/modules', MODULE_ID, 'config.ts'))
     ).toBe(true);
+    expect(
+      readFileSync(path.join(root, 'node', 'src', 'entities.plugin.ts'), 'utf8')
+    ).toContain(`./modules/${MODULE_ID}/entity/item`);
   });
 
   it('根目录契约一次报告缺失文件和旧 payload 布局', async () => {
@@ -316,6 +336,9 @@ describe('Phoenix 插件包本地装配', () => {
     expect(existsSync(path.join(root, 'vue', 'src/modules', MODULE_ID))).toBe(
       false
     );
+    expect(
+      existsSync(path.join(root, 'node', 'src', 'entities.plugin.ts'))
+    ).toBe(false);
   });
 
   it('production 仅在显式安全安装器模式允许本机包接口', async () => {
@@ -537,6 +560,9 @@ describe('Phoenix 插件包本地装配', () => {
       })
     );
     expect(uninstall).toHaveBeenCalledWith(MODULE_ID);
+    expect(
+      readFileSync(path.join(root, 'node', 'src', 'entities.plugin.ts'), 'utf8')
+    ).toContain('export const pluginEntities = [];');
     for (const runtime of ['node', 'vue']) {
       expect(
         existsSync(path.join(root, runtime, 'src/modules', MODULE_ID))
@@ -611,7 +637,7 @@ describe('Phoenix 插件包本地装配', () => {
     });
 
     await expect(service.controlledUninstallLocal(MODULE_ID)).rejects.toThrow(
-      'payload 自动恢复失败'
+      'payload 或实体清单自动恢复失败'
     );
     expect(existsSync(path.join(nodeTarget, 'collision.txt'))).toBe(true);
     expect(existsSync(path.join(root, 'vue', 'src/modules', MODULE_ID))).toBe(
@@ -740,6 +766,7 @@ describe('Phoenix 插件包本地装配', () => {
     );
     const sourceRoot = path.join(root, 'node', 'src');
     mkdirSync(sourceRoot, { recursive: true });
+    rmSync(path.join(sourceRoot, 'modules'), { recursive: true, force: true });
     symlinkSync(externalModules, path.join(sourceRoot, 'modules'));
     const uninstall = jest.fn();
     const service = new PahPluginPackageService();

@@ -51,8 +51,10 @@ export class BaseSysLoginService extends BaseService {
    */
   async login(login: LoginDTO) {
     const { username, captchaId, verifyCode, password } = login;
-    // 校验验证码
-    const checkV = await this.captchaCheck(captchaId, verifyCode);
+    // 默认始终校验验证码；只有显式开启的 loopback 本地开发会话可以跳过。
+    const checkV =
+      !this.captchaRequired() ||
+      (await this.captchaCheck(captchaId, verifyCode));
     if (checkV) {
       const user = await this.baseSysUserEntity.findOneBy({ username });
       // 校验用户状态及密码
@@ -63,6 +65,22 @@ export class BaseSysLoginService extends BaseService {
     } else {
       throw new CoolCommException('验证码不正确');
     }
+  }
+
+  /**
+   * 是否要求后台图片验证码。
+   *
+   * 该便利能力必须同时满足显式开关、local 环境和 loopback 请求；生产环境、
+   * 测试环境及非本机请求即使误设开关也仍会校验验证码。
+   */
+  captchaRequired() {
+    if (
+      process.env.PAH_DEV_DISABLE_CAPTCHA !== 'true' ||
+      process.env.NODE_ENV !== 'local'
+    ) {
+      return true;
+    }
+    return !isLoopbackAddress(this.ctx?.ip);
   }
 
   /**
@@ -185,9 +203,9 @@ export class BaseSysLoginService extends BaseService {
    * @param captchaId 验证码ID
    * @param value 验证码
    */
-  async captchaCheck(captchaId, value) {
+  async captchaCheck(captchaId?: string, value?: string | number) {
     const rv = await this.midwayCache.get(`verify:img:${captchaId}`);
-    if (!rv || !value || value.toLowerCase() !== rv) {
+    if (!rv || !value || String(value).toLowerCase() !== rv) {
       return false;
     } else {
       this.midwayCache.del(`verify:img:${captchaId}`);
@@ -258,4 +276,8 @@ export class BaseSysLoginService extends BaseService {
       return result;
     }
   }
+}
+
+function isLoopbackAddress(ip?: string) {
+  return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
 }

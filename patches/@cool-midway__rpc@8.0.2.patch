@@ -1,0 +1,21 @@
+diff --git a/dist/rpc.js b/dist/rpc.js
+index 47a633fee18b1322f82bb5724ef2693f2800703b..03f34aa913a707343be4003a4bc0b0aa1659c8df 100644
+--- a/dist/rpc.js
++++ b/dist/rpc.js
+@@ -20,7 +20,6 @@ const event_1 = require("./decorator/event/event");
+ const handler_1 = require("./decorator/event/handler");
+ const _ = require("lodash");
+ const typeorm_1 = require("@midwayjs/typeorm");
+-const camelCase_1 = require("@midwayjs/core/dist/util/camelCase");
+ // import { AgentService } from '@moleculer/lab';
+ /**
+  * 微服务
+@@ -121,7 +120,7 @@ let CoolRpc = class CoolRpc {
+                     const curdOption = (0, core_2.getClassMetadata)(rpc_1.MOLECYLER_KEY, target);
+                     const cls = await _this.app
+                         .getApplicationContext()
+-                        .getAsync((0, camelCase_1.camelCase)(service));
++                        .getAsync(_.camelCase(service));
+                     const serviceInstance = new target();
+                     Object.assign(serviceInstance, cls);
+                     serviceInstance.setModel(_this.getModel(curdOption));

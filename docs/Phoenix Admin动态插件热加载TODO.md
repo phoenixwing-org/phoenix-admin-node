@@ -68,26 +68,26 @@ Phoenix 业务插件当前采用 `activationMode: restart`。`.phoenix.cool` 可
 只有在依赖隔离、精确复现、可信来源、无任意脚本执行、原子启用和可恢复回滚均有证据后，才考虑
 放宽“插件必须自包含运行制品”的当前规则。在此之前，安装页不应提示管理员临时执行 `pnpm add`。
 
-## 已完成：运行时实体清单不再污染源码
+## 已完成：Host 与插件实体清单分层
 
-Cool 8.0.8 的 `cool entity` 固定扫描 `src/modules/*/entity/**/*.ts`，并固定写入
-`src/entities.ts`。这个文件本来就是生产构建输入，不能同时充当稳定的 Host tracked 真源；否则插件
-挂载、升级和移除都会把产品路径写进 Host Git diff。
+2026-08-12 的无插件开发环境复现了一个真实故障：管理员卸载全部业务插件后，产品模块目录已经移除，
+但当时 ignored 的 `src/entities.ts` 仍保留 Open Issue、Function 和 BOM 的实体 import，导致下一次 Node
+编译出现 20 条 `TS2307`，API 无法启动。手工执行 `cool entity` 可以恢复，但管理员不应承担这一步。
 
-当前契约已经收口为：
+当前实现已按以下边界收口：
 
-- `src/entities.ts` 与同类的 `src/index.ts` 一样，是 ignored 运行时生成物；
-- Host/Pah 的稳定数据库基线继续由 `src/modules/pah/host-baseline/host-baseline.json`、冻结
-  `sourceCommit`、逐文件 SHA 和 schema 制品审计，不从当前运行时清单反推；
-- local/dev 继续使用 `**/modules/*/entity` 通用发现，production build 在编译前只运行一次
-  `cool entity`，TypeORM 与编译产物消费同一份生成结果；
-- 插件仍只能通过通用 `src/modules/<moduleId>` 装配进入扫描范围，Host 不保存产品 ID 特例；
-- 无插件、单插件、多插件、插件目录含空格以及移除后的冷生成由
-  `test/modules/pah/runtime-entities.test.ts` 回归；重复生成必须保持相同字节。
+- tracked 的 `src/entities.ts` 是稳定 Host 入口，只列 Host 实体并追加 `entities.plugin.ts`；
+- ignored 的 `src/entities.plugin.ts` 由 `scripts/pah-sync-runtime-entities.cjs` 原子生成，只列当前实际
+  挂载/装配的插件实体；
+- `dev`、`dev:midway4`、typecheck 和 build 在编译前同步插件实体；
+- Dev Hub 的 mount、unmount 和 repoint 将链接、Git exclude 与实体同步作为同一事务；
+- 本地插件包选择、放弃和卸载同样同步插件实体；
+- 任一步失败时同时回滚挂载和实体清单，不能留下“目录已删除、旧 import 仍存在”的中间状态；
+- TypeORM 实体元数据在进程启动时固定，因此涉及实体增减仍通过 Host 受控重启生效，不宣称同进程热插拔；
+- Host 无业务插件时，`entities.plugin.ts` 必须是空数组，固定入口及 Host tracked tree 不含业务插件路径。
 
-因此插件安装和卸载只改变 ignored 的装配输出，不再改变长期 tracked 源码。manifest、descriptor、
-migration 和运行时制品的 moduleId/版本/SHA 校验仍由现有 Pah 权威装配器负责，不把这些职责复制到
-Cool 的实体索引里。
+生成器不硬编码 Open Issue、Branding 等产品 ID；它从固定入口读取 Host import 集合，再对实际模块扫描
+结果做差集。manifest、descriptor、migration、版本与包 SHA 仍由 Pah 装配器负责。
 
 ## 预期验收
 

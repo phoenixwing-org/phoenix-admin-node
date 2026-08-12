@@ -1,0 +1,195 @@
+diff --git a/dist/configuration.js b/dist/configuration.js
+index cc6fcd6bc9e53c342f86eec7903f851ad4f1da31..d05607fe31ddeb052107b80851e42694701f14e0 100644
+--- a/dist/configuration.js
++++ b/dist/configuration.js
+@@ -44,10 +44,10 @@ let CoolConfiguration = class CoolConfiguration {
+         });
+     }
+     async onConfigLoad(container, app) {
+-        await container.getAsync(location_1.LocationUtil);
++        const locationUtil = await container.getAsync(location_1.LocationUtil);
+         // 替换app的getBaseDir
+         app.getBaseDir = () => {
+-            return container.get(location_1.LocationUtil).getDistPath();
++            return locationUtil.getDistPath();
+         };
+     }
+     async onServerReady(container) {
+@@ -78,7 +78,7 @@ __decorate([
+     __metadata("design:type", Object)
+ ], CoolConfiguration.prototype, "coreLogger", void 0);
+ __decorate([
+-    (0, core_1.App)(),
++    (0, core_1.MainApp)(),
+     __metadata("design:type", Object)
+ ], CoolConfiguration.prototype, "app", void 0);
+ __decorate([
+@@ -86,7 +86,7 @@ __decorate([
+     __metadata("design:type", event_1.CoolEventManager)
+ ], CoolConfiguration.prototype, "coolEventManager", void 0);
+ __decorate([
+-    (0, core_1.Config)(core_1.ALL),
++    (0, core_1.AllConfig)(),
+     __metadata("design:type", Object)
+ ], CoolConfiguration.prototype, "allConfig", void 0);
+ __decorate([
+@@ -97,6 +97,11 @@ exports.CoolConfiguration = CoolConfiguration = __decorate([
+     (0, core_2.Configuration)({
+         namespace: 'cool',
+         imports: [cache],
++        detector: new core_2.CommonJSFileDetector({
++            loadDir: __dirname,
++            conflictCheck: true,
++            ignore: ['**/configuration.js', '**/index.js'],
++        }),
+         importConfigs: [
+             {
+                 default: DefaultConfig,
+diff --git a/dist/controller/base.js b/dist/controller/base.js
+index a107e1d51d82c6d7a01cf6fd295bd275e8eb1197..9ae646c8ab8d94732cbac9d596cb519570216b4a 100644
+--- a/dist/controller/base.js
++++ b/dist/controller/base.js
+@@ -218,7 +218,7 @@ __decorate([
+     __metadata("design:type", Object)
+ ], BaseController.prototype, "baseCtx", void 0);
+ __decorate([
+-    (0, core_1.App)(),
++    (0, core_1.MainApp)(),
+     __metadata("design:type", Object)
+ ], BaseController.prototype, "baseApp", void 0);
+ __decorate([
+diff --git a/dist/event/index.js b/dist/event/index.js
+index 4735ab72a7352e0e10641e3adede28da855806a0..dc9c7a38ba1bfedc0fafa3b2cc7c9081388650cf 100644
+--- a/dist/event/index.js
++++ b/dist/event/index.js
+@@ -175,7 +175,7 @@ let CoolEventManager = class CoolEventManager extends Events {
+ };
+ exports.CoolEventManager = CoolEventManager;
+ __decorate([
+-    (0, core_1.App)(),
++    (0, core_1.MainApp)(),
+     __metadata("design:type", Object)
+ ], CoolEventManager.prototype, "app", void 0);
+ __decorate([
+diff --git a/dist/module/config.js b/dist/module/config.js
+index 8869dc776b7a20c04c07a2ed9e38adba0a605bf2..ca1d9ce0126b00156eb9c5bdcf34264ce0929c8a 100644
+--- a/dist/module/config.js
++++ b/dist/module/config.js
+@@ -90,11 +90,11 @@ let CoolModuleConfig = class CoolModuleConfig {
+ };
+ exports.CoolModuleConfig = CoolModuleConfig;
+ __decorate([
+-    (0, core_1.App)(),
++    (0, core_1.MainApp)(),
+     __metadata("design:type", Object)
+ ], CoolModuleConfig.prototype, "app", void 0);
+ __decorate([
+-    (0, core_1.Config)(core_1.ALL),
++    (0, core_1.AllConfig)(),
+     __metadata("design:type", Object)
+ ], CoolModuleConfig.prototype, "allConfig", void 0);
+ __decorate([
+diff --git a/dist/module/import.js b/dist/module/import.js
+index a32857c1c6bb52c355330bcf37398840eaf1264f..0b485226304a7c503478b60567cf97ec609c7ca6 100644
+--- a/dist/module/import.js
++++ b/dist/module/import.js
+@@ -231,7 +231,7 @@ __decorate([
+     __metadata("design:type", event_1.CoolEventManager)
+ ], CoolModuleImport.prototype, "coolEventManager", void 0);
+ __decorate([
+-    (0, core_2.App)(),
++    (0, core_2.MainApp)(),
+     __metadata("design:type", Object)
+ ], CoolModuleImport.prototype, "app", void 0);
+ __decorate([
+diff --git a/dist/module/menu.js b/dist/module/menu.js
+index f4979a77cb6b67737d2b725c3fee92a2dd87b0b2..0914f45aa83679f6e0eb8dd590a591e37b839e34 100644
+--- a/dist/module/menu.js
++++ b/dist/module/menu.js
+@@ -149,7 +149,7 @@ __decorate([
+     __metadata("design:type", Object)
+ ], CoolModuleMenu.prototype, "coolConfig", void 0);
+ __decorate([
+-    (0, core_1.App)(),
++    (0, core_1.MainApp)(),
+     __metadata("design:type", Object)
+ ], CoolModuleMenu.prototype, "app", void 0);
+ __decorate([
+diff --git a/dist/service/base.js b/dist/service/base.js
+index 55adc1496d9906559b9794dfbcfa3284599974c8..38240df379f13f63806a7c4bcab7d6281411d811 100644
+--- a/dist/service/base.js
++++ b/dist/service/base.js
+@@ -266,7 +266,7 @@ __decorate([
+     __metadata("design:type", Object)
+ ], BaseService.prototype, "baseCtx", void 0);
+ __decorate([
+-    (0, core_1.App)(),
++    (0, core_1.MainApp)(),
+     __metadata("design:type", Object)
+ ], BaseService.prototype, "baseApp", void 0);
+ __decorate([
+diff --git a/dist/service/mysql.js b/dist/service/mysql.js
+index 9663c453ae3e1e24d486e207a686da7c858f7f10..4561768501e0ba39da2fd77a8fc8e67f8104ec6a 100644
+--- a/dist/service/mysql.js
++++ b/dist/service/mysql.js
+@@ -486,7 +486,7 @@ __decorate([
+     __metadata("design:type", event_1.CoolEventManager)
+ ], BaseMysqlService.prototype, "coolEventManager", void 0);
+ __decorate([
+-    (0, core_1.App)(),
++    (0, core_1.MainApp)(),
+     __metadata("design:type", Object)
+ ], BaseMysqlService.prototype, "baseApp", void 0);
+ __decorate([
+diff --git a/dist/service/postgres.js b/dist/service/postgres.js
+index 6aeece590204814ec084f75fd132745123e038c1..c289e11fd8749aaac5fe857d5a98809304129d6a 100644
+--- a/dist/service/postgres.js
++++ b/dist/service/postgres.js
+@@ -620,7 +620,7 @@ __decorate([
+     __metadata("design:type", event_1.CoolEventManager)
+ ], BasePgService.prototype, "coolEventManager", void 0);
+ __decorate([
+-    (0, core_1.App)(),
++    (0, core_1.MainApp)(),
+     __metadata("design:type", Object)
+ ], BasePgService.prototype, "baseApp", void 0);
+ __decorate([
+diff --git a/dist/service/sqlite.js b/dist/service/sqlite.js
+index 7ca9f4eca2afc38a8b5d78340625d5ca18be7bc9..190bbed7e324b7c60fcb0fa02a4983cfcd577d88 100644
+--- a/dist/service/sqlite.js
++++ b/dist/service/sqlite.js
+@@ -537,11 +537,11 @@ __decorate([
+     __metadata("design:type", event_1.CoolEventManager)
+ ], BaseSqliteService.prototype, "coolEventManager", void 0);
+ __decorate([
+-    (0, core_1.Config)(core_1.ALL),
++    (0, core_1.AllConfig)(),
+     __metadata("design:type", Object)
+ ], BaseSqliteService.prototype, "allConfig", void 0);
+ __decorate([
+-    (0, core_1.App)(),
++    (0, core_1.MainApp)(),
+     __metadata("design:type", Object)
+ ], BaseSqliteService.prototype, "baseApp", void 0);
+ __decorate([
+diff --git a/dist/tag/data.js b/dist/tag/data.js
+index a0e3fe22b112b3087c542c9ae31bae390d14dc6c..eb54ae3dde66f2a59fee4a325e31c30f7a47d08f 100644
+--- a/dist/tag/data.js
++++ b/dist/tag/data.js
+@@ -51,12 +51,12 @@ let CoolUrlTagData = class CoolUrlTagData {
+         const controllers = (0, core_1.listModule)(core_1.CONTROLLER_KEY);
+         for (const controller of controllers) {
+             const controllerOption = (0, core_1.getClassMetadata)(core_1.CONTROLLER_KEY, controller);
+-            // 方法标记
+-            const listPropertyMetas = (0, core_1.listPropertyDataFromClass)(tag_1.COOL_METHOD_TAG_KEY, controller);
+             const requestMetas = (0, core_1.getClassMetadata)(core_1.WEB_ROUTER_KEY, controller);
+-            for (const propertyMeta of listPropertyMetas) {
++            for (const requestMeta of requestMetas || []) {
++                const propertyMeta = (0, core_1.getPropertyDataFromClass)(tag_1.COOL_METHOD_TAG_KEY, controller, requestMeta.method);
++                if (!propertyMeta)
++                    continue;
+                 const _data = this.data[propertyMeta.tag] || [];
+-                const requestMeta = _.find(requestMetas, { method: propertyMeta.key });
+                 if (requestMeta && controllerOption) {
+                     this.data[propertyMeta.tag] = _.uniq(_data.concat(controllerOption.prefix + requestMeta.path));
+                 }

@@ -1,12 +1,12 @@
 import { CoolEvent, Event } from '@cool-midway/core';
-import { App, ILogger, IMidwayApplication, Inject } from '@midwayjs/core';
+import { MainApp, ILogger, IMidwayApplication, Inject } from '@midwayjs/core';
 
 /**
  * 接收事件
  */
 @CoolEvent()
 export class BaseAppEvent {
-  @App()
+  @MainApp()
   app: IMidwayApplication;
 
   @Inject()
