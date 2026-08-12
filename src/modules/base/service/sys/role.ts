@@ -1,4 +1,4 @@
-import { Inject, Provide } from '@midwayjs/core';
+import { IMidwayApplication, Inject, MainApp, Provide } from '@midwayjs/core';
 import { BaseService } from '@cool-midway/core';
 import { InjectEntityModel } from '@midwayjs/typeorm';
 import { Repository } from 'typeorm';
@@ -27,8 +27,8 @@ export class BaseSysRoleService extends BaseService {
   @InjectEntityModel(BaseSysRoleDepartmentEntity)
   baseSysRoleDepartmentEntity: Repository<BaseSysRoleDepartmentEntity>;
 
-  @Inject()
-  baseSysPermsService: BaseSysPermsService;
+  @MainApp()
+  app: IMidwayApplication;
 
   @Inject()
   ctx;
@@ -64,6 +64,9 @@ export class BaseSysRoleService extends BaseService {
    * @param departmentIds
    */
   async updatePerms(roleId, menuIdList?, departmentIds = []) {
+    const baseSysPermsService = await this.app
+      .getApplicationContext()
+      .getAsync(BaseSysPermsService);
     // 更新菜单权限
     await this.baseSysRoleMenuEntity.delete({ roleId });
     await Promise.all(
@@ -84,7 +87,7 @@ export class BaseSysRoleService extends BaseService {
     // 刷新权限
     const userRoles = await this.baseSysUserRoleEntity.findBy({ roleId });
     for (const userRole of userRoles) {
-      await this.baseSysPermsService.refreshPerms(userRole.userId);
+      await baseSysPermsService.refreshPerms(userRole.userId);
     }
   }
 

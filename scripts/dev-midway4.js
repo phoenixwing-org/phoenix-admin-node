@@ -25,7 +25,9 @@ async function main() {
   app = await createApp({
     appDir: process.cwd(),
     baseDir: join(process.cwd(), 'dist'),
-    imports: [require('../dist/index')],
+    // watch 模式只编译源码，不执行 bundle，因此没有 dist/index。
+    // 直接载入应用 Configuration，再由其显式 detector 扫描 dist。
+    imports: [require('../dist/configuration')],
     ...args,
   });
 

@@ -21,9 +21,6 @@ export class PluginTypesService extends BaseService {
   pluginInfoEntity: Repository<PluginInfoEntity>;
 
   @Inject()
-  pluginService: PluginService;
-
-  @Inject()
   utils: Utils;
 
   /**
@@ -236,13 +233,18 @@ export class PluginTypesService extends BaseService {
    * 重新生成d.ts文件
    */
   async reGenerate() {
+    // Midway 4 会严格拒绝 PluginService <-> PluginTypesService 的属性注入环。
+    // 仅在实际重新生成类型时解析 PluginService，避免普通菜单请求也实例化整条环。
+    const pluginService = await this.app
+      .getApplicationContext()
+      .getAsync(PluginService);
     const pluginInfos = await this.pluginInfoEntity
       .createQueryBuilder('a')
       .where('a.status = :status', { status: 1 })
       .select(['a.id', 'a.status', 'a.tsContent', 'a.keyName'])
       .getMany();
     for (const pluginInfo of pluginInfos) {
-      const data = await this.pluginService.getData(pluginInfo.keyName);
+      const data = await pluginService.getData(pluginInfo.keyName);
       if (!data) {
         continue;
       }
