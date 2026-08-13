@@ -24,12 +24,23 @@ function initializeHost(root: string) {
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'phoenix-admin-node' })
   );
-  writeEntity(root, 'host-fixture', 'HostEntity');
+  writeEntity(root, 'base', 'HostEntity');
   writeFileSync(
     path.join(root, 'src', 'entities.ts'),
     `import { pluginEntities } from './entities.plugin';\n` +
-      `import * as hostEntity from './modules/host-fixture/entity/HostEntity';\n` +
+      `import * as hostEntity from './modules/base/entity/HostEntity';\n` +
       `export const entities = [...Object.values(hostEntity), ...pluginEntities];\n`
+  );
+  writeFileSync(
+    path.join(root, 'tsconfig.json'),
+    JSON.stringify({
+      compilerOptions: {
+        target: 'es2018',
+        module: 'commonjs',
+        rootDir: 'src',
+        outDir: 'dist',
+      },
+    })
   );
 }
 
@@ -48,6 +59,51 @@ function generate(root: string) {
     stdio: 'pipe',
   });
   return readFileSync(path.join(root, 'src', 'entities.plugin.ts'), 'utf8');
+}
+
+function mountDevelopmentProduct(
+  hostRoot: string,
+  moduleId: string,
+  options: { branding?: boolean; dirty?: boolean } = {}
+) {
+  const productRoot = mkdtempSync(path.join(tmpdir(), 'pah-product-entities-'));
+  const packageRoot = path.join(productRoot, 'packages', 'admin-plugin');
+  const nodeSource = path.join(packageRoot, 'midway', moduleId);
+  const webSource = path.join(packageRoot, 'vue', moduleId);
+  mkdirSync(path.join(nodeSource, 'entity'), { recursive: true });
+  writeFileSync(
+    path.join(nodeSource, 'entity', 'PluginEntity.ts'),
+    'export class PluginEntity {}\n'
+  );
+  writeFileSync(path.join(nodeSource, 'config.ts'), 'export default () => ({});\n');
+  mkdirSync(webSource, { recursive: true });
+  writeFileSync(path.join(webSource, 'config.ts'), 'export default () => ({});\n');
+  writeFileSync(
+    path.join(packageRoot, 'manifest.json'),
+    JSON.stringify({
+      formatVersion: 2,
+      ...(options.branding ? { pluginType: 'phoenix.admin.branding' } : {}),
+      moduleId,
+      version: '1.0.0',
+      activationMode: 'restart',
+      entrypoints: {
+        node: `midway/${moduleId}/config.ts`,
+        web: `vue/${moduleId}/config.ts`,
+      },
+    })
+  );
+  execFileSync('git', ['init', '-q'], { cwd: productRoot });
+  execFileSync('git', ['add', '.'], { cwd: productRoot });
+  execFileSync(
+    'git',
+    ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', 'commit', '-qm', 'fixture'],
+    { cwd: productRoot }
+  );
+  if (options.dirty) {
+    writeFileSync(path.join(nodeSource, 'config.ts'), 'export default () => ({ dirty: true });\n');
+  }
+  symlinkSync(nodeSource, path.join(hostRoot, 'src', 'modules', moduleId), 'dir');
+  return productRoot;
 }
 
 describe('运行时实体清单边界', () => {
@@ -81,14 +137,14 @@ describe('运行时实体清单边界', () => {
     expect(readFileSync(fixedEntry, 'utf8')).toBe(fixedContent);
   });
 
-  it('覆盖纯 Host、挂载插件、空格目录及卸载后的确定性冷生成', () => {
+  it('纯 Host 忽略未知 symlink 与无收据普通目录，并支持确定性冷生成', () => {
     const root = mkdtempSync(path.join(tmpdir(), 'pah-runtime-entities-'));
     const plugin = mkdtempSync(path.join(tmpdir(), 'pah-plugin-entities-'));
     try {
       initializeHost(root);
       const empty = generate(root);
       expect(empty).not.toContain('import * as entity');
-      expect(empty).not.toContain('host-fixture');
+      expect(empty).not.toContain('modules/base/entity/HostEntity');
 
       writeEntity(plugin, 'ignored', 'PluginEntity');
       const pluginModule = path.join(plugin, 'src', 'modules', 'ignored');
@@ -101,18 +157,14 @@ describe('运行时实体清单边界', () => {
       symlinkSync(pluginModule, mountedModule, 'dir');
       writeEntity(root, 'second-plugin-fixture', 'SecondEntity');
       const multiple = generate(root);
-      expect(multiple).toContain(
-        "from './modules/plugin fixture with space/entity/PluginEntity'"
-      );
-      expect(multiple).toContain(
-        "from './modules/second-plugin-fixture/entity/SecondEntity'"
-      );
+      expect(multiple).not.toContain('plugin fixture with space');
+      expect(multiple).not.toContain('second-plugin-fixture');
       expect(generate(root)).toBe(multiple);
 
       unlinkSync(mountedModule);
       const afterRemoval = generate(root);
       expect(afterRemoval).not.toContain('plugin fixture with space');
-      expect(afterRemoval).toContain('second-plugin-fixture');
+      expect(afterRemoval).not.toContain('second-plugin-fixture');
       expect(existsSync(path.join(root, 'src', 'entities.plugin.ts'))).toBe(
         true
       );
@@ -125,26 +177,193 @@ describe('运行时实体清单边界', () => {
   it('拒绝模块实体目录中的二次 symlink，避免生成边界逃逸', () => {
     const root = mkdtempSync(path.join(tmpdir(), 'pah-runtime-entities-'));
     const outside = mkdtempSync(path.join(tmpdir(), 'pah-entity-outside-'));
+    let product: string | undefined;
     try {
       initializeHost(root);
+      product = mountDevelopmentProduct(root, 'unsafe-plugin');
       writeFileSync(path.join(outside, 'Escaped.ts'), 'export class Escaped {}\n');
       const entityRoot = path.join(
-        root,
-        'src',
-        'modules',
+        product,
+        'packages',
+        'admin-plugin',
+        'midway',
         'unsafe-plugin',
         'entity'
       );
-      mkdirSync(entityRoot, { recursive: true });
       symlinkSync(outside, path.join(entityRoot, 'nested'), 'dir');
-
-      expect(() => generate(root)).toThrow(/实体目录内部不得包含符号链接/);
-      expect(existsSync(path.join(root, 'src', 'entities.plugin.ts'))).toBe(
-        false
+      execFileSync('git', ['add', '.'], { cwd: product });
+      execFileSync(
+        'git',
+        ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', 'commit', '-qm', 'nested link'],
+        { cwd: product }
       );
+
+      expect(() => generate(root)).not.toThrow();
+      expect(existsSync(path.join(root, 'src', 'entities.plugin.ts'))).toBe(
+        true
+      );
+      expect(
+        readFileSync(path.join(root, 'src', 'entities.plugin.ts'), 'utf8')
+      ).not.toContain('unsafe-plugin');
     } finally {
       rmSync(root, { recursive: true, force: true });
       rmSync(outside, { recursive: true, force: true });
+      if (product) rmSync(product, { recursive: true, force: true });
+    }
+  });
+
+  it('启动隔离模块不会进入动态实体清单', () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'pah-runtime-entities-'));
+    const products: string[] = [];
+    try {
+      initializeHost(root);
+      products.push(mountDevelopmentProduct(root, 'healthy-plugin'));
+      products.push(mountDevelopmentProduct(root, 'quarantined-plugin'));
+
+      execFileSync(
+        process.execPath,
+        [
+          generator,
+          '--root',
+          root,
+          '--ignore-module',
+          'quarantined-plugin',
+        ],
+        { cwd: repositoryRoot, stdio: 'pipe' }
+      );
+      const content = readFileSync(
+        path.join(root, 'src', 'entities.plugin.ts'),
+        'utf8'
+      );
+      expect(content).toContain('healthy-plugin/entity/PluginEntity');
+      expect(content).not.toContain('quarantined-plugin');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      for (const product of products) rmSync(product, { recursive: true, force: true });
+    }
+  });
+
+  it('安全品牌模块也由 Host 显式排除实体聚合', () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'pah-runtime-entities-'));
+    try {
+      initializeHost(root);
+      writeEntity(root, 'phoenix-branding', 'UnexpectedBrandEntity');
+      execFileSync(
+        process.execPath,
+        [
+          generator,
+          '--root',
+          root,
+          '--ignore-module',
+          'phoenix-branding',
+        ],
+        { cwd: repositoryRoot, stdio: 'pipe' }
+      );
+      expect(
+        readFileSync(path.join(root, 'src', 'entities.plugin.ts'), 'utf8')
+      ).not.toContain('phoenix-branding');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('编译前只聚合 clean 业务开发挂载，dirty 与品牌挂载 fail-closed', () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'pah-runtime-entities-'));
+    const products: string[] = [];
+    try {
+      initializeHost(root);
+      products.push(mountDevelopmentProduct(root, 'clean-plugin'));
+      products.push(mountDevelopmentProduct(root, 'dirty-plugin', { dirty: true }));
+      products.push(mountDevelopmentProduct(root, 'brand-plugin', { branding: true }));
+      const content = generate(root);
+      expect(content).toContain('clean-plugin/entity/PluginEntity');
+      expect(content).not.toContain('dirty-plugin');
+      expect(content).not.toContain('brand-plugin');
+      expect(
+        JSON.parse(
+          readFileSync(
+            path.join(root, '.runtime', 'pah-plugin-compile.json'),
+            'utf8'
+          )
+        ).inspections
+      ).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            moduleId: 'brand-plugin',
+            state: 'ready',
+            detail: expect.stringContaining('policy=no-entities'),
+          }),
+        ])
+      );
+      expect(
+        JSON.parse(
+          readFileSync(
+            path.join(root, '.runtime', 'tsconfig.phoenix.json'),
+            'utf8'
+          )
+        ).exclude
+      ).toEqual(
+        expect.arrayContaining([
+          '../src/modules/dirty-plugin/**/*',
+          '../src/modules/brand-plugin/**/*',
+        ])
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      for (const product of products) rmSync(product, { recursive: true, force: true });
+    }
+  });
+
+  it('用 eligible 映射选择实体，全部卸载后原子恢复空清单', () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'pah-runtime-entities-'));
+    const products: string[] = [];
+    try {
+      initializeHost(root);
+      products.push(mountDevelopmentProduct(root, 'issue-plugin'));
+      products.push(
+        mountDevelopmentProduct(root, 'function-plugin', { dirty: true })
+      );
+
+      const selected = generate(root);
+      const firstReceipt = JSON.parse(
+        readFileSync(
+          path.join(root, '.runtime', 'pah-plugin-compile.json'),
+          'utf8'
+        )
+      ) as {
+        inspections: Array<{ moduleId: string; eligible: boolean }>;
+      };
+      const validMap = Object.fromEntries(
+        firstReceipt.inspections.map(item => [item.moduleId, item.eligible])
+      );
+
+      expect(validMap).toEqual({
+        'function-plugin': false,
+        'issue-plugin': true,
+      });
+      expect(selected).toContain('issue-plugin/entity/PluginEntity');
+      expect(selected).not.toContain('function-plugin');
+
+      unlinkSync(path.join(root, 'src', 'modules', 'issue-plugin'));
+      unlinkSync(path.join(root, 'src', 'modules', 'function-plugin'));
+      const afterUnmount = generate(root);
+      expect(afterUnmount).toBe(
+        '// 自动生成的插件实体清单，请勿手动修改\n' +
+          'export const pluginEntities = [];\n'
+      );
+      expect(
+        JSON.parse(
+          readFileSync(
+            path.join(root, '.runtime', 'pah-plugin-compile.json'),
+            'utf8'
+          )
+        ).inspections
+      ).toEqual([]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      for (const product of products) {
+        rmSync(product, { recursive: true, force: true });
+      }
     }
   });
 });

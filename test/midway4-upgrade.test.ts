@@ -74,10 +74,17 @@ describe('Midway 4 compatibility baseline', () => {
     );
     expect(packageJson.scripts['dev:midway4']).not.toContain('cool check');
     expect(packageJson.scripts.typecheck).toContain('entities:sync');
+    expect(packageJson.scripts.typecheck).toContain(
+      '.runtime/tsconfig.phoenix.json'
+    );
     expect(packageJson.scripts.dev).toContain('pah-sync-runtime-entities.cjs');
     expect(packageJson.scripts['dev:midway4']).toContain(
       'pah-sync-runtime-entities.cjs'
     );
+    expect(packageJson.scripts.dev).toContain(
+      '.runtime/tsconfig.phoenix.json'
+    );
+    expect(packageJson.scripts.build).toContain('pah-bundle-runtime.cjs');
     expect(config).toContain("type: 'postgres'");
     expect(config).toContain("hostname: '127.0.0.1'");
     expect(config).toContain("randomBytes(32).toString('hex')");

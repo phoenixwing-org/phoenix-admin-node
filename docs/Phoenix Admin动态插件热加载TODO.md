@@ -79,15 +79,18 @@ Phoenix 业务插件当前采用 `activationMode: restart`。`.phoenix.cool` 可
 - tracked 的 `src/entities.ts` 是稳定 Host 入口，只列 Host 实体并追加 `entities.plugin.ts`；
 - ignored 的 `src/entities.plugin.ts` 由 `scripts/pah-sync-runtime-entities.cjs` 原子生成，只列当前实际
   挂载/装配的插件实体；
-- `dev`、`dev:midway4`、typecheck 和 build 在编译前同步插件实体；
-- Dev Hub 的 mount、unmount 和 repoint 将链接、Git exclude 与实体同步作为同一事务；
+- `dev`、`dev:midway4`、typecheck 和 build 在编译前由 Host 同步插件实体与隔离 tsconfig；
+- Dev Hub 的 mount、unmount 和 repoint 只维护链接与 Git exclude；Host 启动门禁自行发现实际目录，
+  不读取 Hub marker，也不把初始化、健康或实体生成下放给 Hub；
 - 本地插件包选择、放弃和卸载同样同步插件实体；
 - 任一步失败时同时回滚挂载和实体清单，不能留下“目录已删除、旧 import 仍存在”的中间状态；
 - TypeORM 实体元数据在进程启动时固定，因此涉及实体增减仍通过 Host 受控重启生效，不宣称同进程热插拔；
 - Host 无业务插件时，`entities.plugin.ts` 必须是空数组，固定入口及 Host tracked tree 不含业务插件路径。
 
 生成器不硬编码 Open Issue、Branding 等产品 ID；它从固定入口读取 Host import 集合，再对实际模块扫描
-结果做差集。manifest、descriptor、migration、版本与包 SHA 仍由 Pah 装配器负责。
+结果做差集。开发 symlink 还必须通过 clean Git、manifest、Node/Vue 双端入口和逐插件 Host TypeScript
+兼容检查；任一失败均 fail-closed，仅输出可复制的 `[phoenix-plugin-health]` 诊断。manifest、descriptor、
+migration、版本与包 SHA 的权威安装验证仍由 Phoenix Host 装配器负责。
 
 ## 预期验收
 

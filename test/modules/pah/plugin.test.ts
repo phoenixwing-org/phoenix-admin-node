@@ -18,7 +18,7 @@ import {
   PAH_PLUGIN_FORMAT_VERSION,
   PahPluginLifecycleState,
   PahPluginManifest,
-  validatePahPluginManifest,
+  validatePhoenixPluginManifest,
 } from '../../../src/modules/pah/interface/plugin';
 import {
   PAH_BUILTIN_NAVIGATION_GROUPS,
@@ -49,6 +49,15 @@ const SECOND_MIGRATION_SQL = readFileSync(
 );
 const MIGRATION_CHECKSUM = checksumPahSqlArtifact(FIRST_MIGRATION_SQL);
 const SECOND_MIGRATION_CHECKSUM = checksumPahSqlArtifact(SECOND_MIGRATION_SQL);
+
+function writeCompileReceipt(root: string, ignoredModuleIds: string[] = []) {
+  const runtimeRoot = path.join(root, '.runtime');
+  mkdirSync(runtimeRoot, { recursive: true });
+  writeFileSync(
+    path.join(runtimeRoot, 'pah-plugin-compile.json'),
+    JSON.stringify({ formatVersion: 1, ignoredModuleIds, inspections: [] })
+  );
+}
 
 function lifecycleService(state: PahPluginLifecycleState) {
   const contributionFind = jest.fn();
@@ -165,7 +174,7 @@ function manifest(): PahPluginManifest {
 
 describe('Pah 插件契约', () => {
   it('接受边界正确的 example-plugin manifest 与完整 Host reuse 声明', () => {
-    expect(validatePahPluginManifest(manifest())).toEqual({
+    expect(validatePhoenixPluginManifest(manifest())).toEqual({
       valid: true,
       errors: [],
     });
@@ -174,7 +183,7 @@ describe('Pah 插件契约', () => {
   it('旧 manifest 格式不会被静默按 SQL v1 新契约解释', () => {
     const input = manifest();
     input.formatVersion = 1;
-    expect(validatePahPluginManifest(input).errors).toContain(
+    expect(validatePhoenixPluginManifest(input).errors).toContain(
       'formatVersion 不受支持'
     );
   });
@@ -182,7 +191,7 @@ describe('Pah 插件契约', () => {
   it('拒绝未知 Host reuse 能力', () => {
     const input = manifest();
     input.hostReuse.push('shell' as any);
-    expect(validatePahPluginManifest(input).errors).toContain(
+    expect(validatePhoenixPluginManifest(input).errors).toContain(
       '未知 Host 复用能力：shell'
     );
   });
@@ -190,7 +199,7 @@ describe('Pah 插件契约', () => {
   it('拒绝越过插件命名空间的路由', () => {
     const input = manifest();
     input.routes[0].path = '/sys/user';
-    const result = validatePahPluginManifest(input);
+    const result = validatePhoenixPluginManifest(input);
     expect(result.valid).toBe(false);
     expect(result.errors).toContain('路由路径越界：/sys/user');
   });
@@ -227,7 +236,7 @@ describe('Pah 插件契约', () => {
     };
     input.uninstall.purgeCapability = 'example-plugin-engine:data:purge';
 
-    expect(validatePahPluginManifest(input)).toEqual({
+    expect(validatePhoenixPluginManifest(input)).toEqual({
       valid: true,
       errors: [],
     });
@@ -236,7 +245,7 @@ describe('Pah 插件契约', () => {
   it('拒绝多段或畸形路由前缀', () => {
     const input = manifest();
     input.routePrefix = '/example/admin';
-    expect(validatePahPluginManifest(input).errors).toContain(
+    expect(validatePhoenixPluginManifest(input).errors).toContain(
       'routePrefix 必须是单段安全路径：/example/admin'
     );
   });
@@ -246,7 +255,7 @@ describe('Pah 插件契约', () => {
     input.routes[0].icon = 'document';
     input.navigation.modules[0].icon = 'folder-opened';
 
-    expect(validatePahPluginManifest(input).errors).toEqual(
+    expect(validatePhoenixPluginManifest(input).errors).toEqual(
       expect.arrayContaining([
         '路由图标必须使用显式命名空间：document',
         '导航模块图标必须使用显式命名空间：folder-opened',
@@ -255,7 +264,7 @@ describe('Pah 插件契约', () => {
 
     input.routes[0].icon = 'vendor:issue.list';
     input.navigation.modules[0].icon = 'cool:folder';
-    expect(validatePahPluginManifest(input)).toEqual({
+    expect(validatePhoenixPluginManifest(input)).toEqual({
       valid: true,
       errors: [],
     });
@@ -264,7 +273,7 @@ describe('Pah 插件契约', () => {
   it('拒绝默认清除业务数据', () => {
     const input = manifest();
     input.dataOwnership.retainedOnUninstall = false;
-    expect(validatePahPluginManifest(input).errors).toContain(
+    expect(validatePhoenixPluginManifest(input).errors).toContain(
       '卸载必须默认保留业务数据'
     );
   });
@@ -281,7 +290,7 @@ describe('Pah 插件契约', () => {
         artifact: { format: 'sql', path: '../unsafe.sql' },
       },
     ];
-    const errors = validatePahPluginManifest(input).errors;
+    const errors = validatePhoenixPluginManifest(input).errors;
     expect(errors).toContain(
       '路由引用未声明能力码：example-plugin:item:unknown'
     );
@@ -294,12 +303,12 @@ describe('Pah 插件契约', () => {
   it('拒绝重复或越界的 SQL 迁移制品路径', () => {
     const input = manifest();
     input.migrations[1].artifact.path = input.migrations[0].artifact.path;
-    expect(validatePahPluginManifest(input).errors).toContain(
+    expect(validatePhoenixPluginManifest(input).errors).toContain(
       `重复迁移制品路径：${FIRST_MIGRATION_PATH}`
     );
 
     input.migrations[1].artifact.path = '/tmp/migration.sql';
-    expect(validatePahPluginManifest(input).errors).toContain(
+    expect(validatePhoenixPluginManifest(input).errors).toContain(
       '迁移制品路径不安全：/tmp/migration.sql'
     );
   });
@@ -391,9 +400,9 @@ describe('Pah 插件契约', () => {
 
   it('把畸形 HTTP JSON 转成校验错误而不是运行时异常', () => {
     expect(() =>
-      validatePahPluginManifest({ formatVersion: 1, moduleId: MODULE_ID })
+      validatePhoenixPluginManifest({ formatVersion: 1, moduleId: MODULE_ID })
     ).not.toThrow();
-    const result = validatePahPluginManifest({
+    const result = validatePhoenixPluginManifest({
       formatVersion: 1,
       moduleId: MODULE_ID,
       routes: [{ id: 123, path: null }],
@@ -644,6 +653,7 @@ describe('Pah 通用 SQL 迁移执行器', () => {
       path.join(tempRoot, 'src/modules/pah'),
       { recursive: true }
     );
+    writeCompileReceipt(tempRoot);
     try {
       const assembled = spawnSync(process.execPath, [assembler], {
         cwd: tempRoot,
@@ -712,6 +722,7 @@ describe('Pah 通用 SQL 迁移执行器', () => {
       const sourceRoot = path.join(tempRoot, 'src/modules', MODULE_ID);
       mkdirSync(path.dirname(sourceRoot), { recursive: true });
       cpSync(MIGRATION_FIXTURE_ROOT, sourceRoot, { recursive: true });
+      writeCompileReceipt(tempRoot);
       const descriptorPath = path.join(sourceRoot, 'pah-plugin.artifacts.json');
       const descriptor = JSON.parse(readFileSync(descriptorPath, 'utf8'));
       const artifact = descriptor.runtimeArtifacts[0];

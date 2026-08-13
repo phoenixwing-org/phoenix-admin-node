@@ -19,7 +19,7 @@ import {
   pahCapabilityPermissionTokens,
   PahPluginLifecycleState,
   PahPluginManifest,
-  validatePahPluginManifest,
+  validatePhoenixPluginManifest,
 } from '../interface/plugin';
 import { PahPublicLoginBrandingService } from './public-login-branding';
 
@@ -70,7 +70,7 @@ export class PahPluginService extends BaseService {
 
   async register(manifest: PahPluginManifest) {
     this.requireHostAdmin();
-    const validation = validatePahPluginManifest(manifest);
+    const validation = validatePhoenixPluginManifest(manifest);
     if (!validation.valid) {
       throw new CoolCommException(validation.errors.join('；'));
     }

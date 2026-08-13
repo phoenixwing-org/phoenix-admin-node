@@ -1,6 +1,9 @@
 const { join } = require('path');
 const { MidwayPerformanceManager } = require('@midwayjs/core');
 const { close, createApp, processArgsParser } = require('@midwayjs/mock');
+const {
+  pruneIgnoredRuntimeModules,
+} = require('./pah-prune-ignored-runtime-modules.cjs');
 
 process.env.MIDWAY_TS_MODE = 'false';
 
@@ -17,6 +20,11 @@ async function shutdown() {
 async function main() {
   const args = processArgsParser(process.argv);
   if (args.port) process.env.MIDWAY_HTTP_PORT = args.port;
+
+  const pruneResult = pruneIgnoredRuntimeModules(process.cwd());
+  process.stdout.write(
+    `[phoenix-plugin-health] host=node phase=runtime-prune ignored=${pruneResult.ignoredModuleIds.length} removed=${pruneResult.removedModuleIds.length}\n`
+  );
 
   process.once('SIGINT', shutdown);
   process.once('SIGQUIT', shutdown);

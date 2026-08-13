@@ -20,13 +20,44 @@ import * as Midway4Config from './config/config.midway4';
 import * as ProdConfig from './config/config.prod';
 import * as cool from '@cool-midway/core';
 import * as upload from '@midwayjs/upload';
+import { execFileSync } from 'child_process';
+import { existsSync } from 'fs';
+import * as path from 'path';
 import { PahPublicLoginBrandingService } from './modules/pah/service/public-login-branding';
+import {
+  inspectPhoenixPluginModules,
+  PhoenixPluginStartupHealthService,
+} from './modules/pah/service/startup-health';
+import { safeStartupDiagnostic } from './modules/pah/service/safe-diagnostic';
 // import * as task from '@cool-midway/task';
 // import * as rpc from '@cool-midway/rpc';
+
+const startupPluginInspection = inspectPhoenixPluginModules(process.cwd());
+const runtimeEntityGenerator = path.join(
+  process.cwd(),
+  'scripts',
+  'pah-sync-runtime-entities.cjs'
+);
+if (existsSync(runtimeEntityGenerator)) {
+  execFileSync(
+    process.execPath,
+    [
+      runtimeEntityGenerator,
+      '--root',
+      process.cwd(),
+      ...startupPluginInspection.ignoredModuleIds.flatMap(moduleId => [
+        '--ignore-module',
+        moduleId,
+      ]),
+    ],
+    { stdio: 'inherit' }
+  );
+}
 
 @Configuration({
   detector: new CommonJSFileDetector({
     conflictCheck: true,
+    ignore: startupPluginInspection.ignoredDetectorPatterns,
   }),
   imports: [
     // https://koajs.com/
@@ -81,9 +112,21 @@ export class MainConfiguration {
       await pahPublicLoginBrandingService.reconcileOnStartup();
     } catch (error) {
       this.logger.error(
-        `[public-login-branding] startup reconcile failed; endpoint will use Host default: ${
-          error instanceof Error ? error.message : String(error)
-        }`
+        `[public-login-branding] startup reconcile failed; endpoint will use Host default: ${safeStartupDiagnostic(
+          error
+        )}`
+      );
+    }
+    try {
+      const pluginHealthService = await this.app
+        .getApplicationContext()
+        .getAsync(PhoenixPluginStartupHealthService);
+      await pluginHealthService.inspectOnStartup();
+    } catch (error) {
+      this.logger.error(
+        `[phoenix-plugin-health] startup inspection failed; Host remains available: ${safeStartupDiagnostic(
+          error
+        )}`
       );
     }
   }

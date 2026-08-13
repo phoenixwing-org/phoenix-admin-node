@@ -31,7 +31,10 @@ import {
   validatePahPublicLoginBrandingSnapshot,
   withPahPublicLoginBrandingRevision,
 } from '../interface/public-login-branding';
-import { PahPluginManifest } from '../interface/plugin';
+import {
+  PahPluginManifest,
+  validatePhoenixPluginManifest,
+} from '../interface/plugin';
 
 const SELECTION_KEY = 'pah.public-login-branding.selection';
 const RUNTIME_FORMAT_VERSION = 1 as const;
@@ -342,6 +345,71 @@ export class PahPublicLoginBrandingService extends BaseService {
   ) {
     const contribution = manifest.uiContributions;
     if (!contribution?.login || !contribution.brand) return { recorded: false };
+    const assets = this.storeBrandAssets(manifest, vueModuleRoot);
+    const receipt: BrandingReceiptV1 = {
+      formatVersion: RUNTIME_FORMAT_VERSION,
+      moduleId: manifest.moduleId,
+      version: manifest.version,
+      packageSha256,
+      assets,
+    };
+    const receiptCreated = writeExclusive(
+      this.receiptFile(manifest.moduleId, manifest.version, packageSha256),
+      JSON.stringify(receipt)
+    );
+    return { recorded: true, receiptCreated, receipt };
+  }
+
+  publishDevelopmentPreview(
+    manifest: PahPluginManifest,
+    sourceIdentitySha256: string,
+    vueModuleRoot: string
+  ) {
+    if (process.env.NODE_ENV !== 'local') {
+      throw new CoolCommException('品牌开发预览只允许 local 环境');
+    }
+    if (!/^[a-f0-9]{64}$/.test(sourceIdentitySha256)) {
+      throw new CoolCommException('品牌开发挂载源码身份不合法');
+    }
+    const validation = validatePhoenixPluginManifest(manifest);
+    if (!validation.valid) {
+      throw new CoolCommException(validation.errors.join('；'));
+    }
+    if (
+      manifest.pluginType !== 'phoenix.admin.branding' ||
+      !manifest.uiContributions?.login ||
+      !manifest.uiContributions.brand
+    ) {
+      throw new CoolCommException('开发预览插件未声明公开登录品牌贡献');
+    }
+    const assets = this.storeBrandAssets(manifest, vueModuleRoot);
+    const snapshot = this.compileManifestSnapshot(
+      manifest,
+      sourceIdentitySha256,
+      assets
+    );
+    this.publishSnapshot(snapshot);
+    return snapshot;
+  }
+
+  publishDevelopmentFallback() {
+    if (process.env.NODE_ENV !== 'local') {
+      throw new CoolCommException('品牌开发回退只允许 local 环境');
+    }
+    const snapshot = this.hostDefaultSnapshot();
+    this.publishSnapshot(snapshot);
+    return snapshot;
+  }
+
+  assertInstalledBrandingReady(plugin: PahPluginInstallationEntity) {
+    this.compilePluginSnapshot(plugin);
+  }
+
+  private storeBrandAssets(manifest: PahPluginManifest, vueModuleRoot: string) {
+    const contribution = manifest.uiContributions;
+    if (!contribution?.login || !contribution.brand) {
+      throw new CoolCommException('插件未声明公开登录品牌贡献');
+    }
     const root = realpathSync(vueModuleRoot);
     const assets = this.brandAssets(contribution.brand);
     for (const [name, declaration] of Object.entries(assets) as Array<
@@ -380,18 +448,7 @@ export class PahPublicLoginBrandingService extends BaseService {
         })
       );
     }
-    const receipt: BrandingReceiptV1 = {
-      formatVersion: RUNTIME_FORMAT_VERSION,
-      moduleId: manifest.moduleId,
-      version: manifest.version,
-      packageSha256,
-      assets,
-    };
-    const receiptCreated = writeExclusive(
-      this.receiptFile(manifest.moduleId, manifest.version, packageSha256),
-      JSON.stringify(receipt)
-    );
-    return { recorded: true, receiptCreated, receipt };
+    return assets;
   }
 
   removeVerifiedPackageReceipt(
@@ -521,6 +578,21 @@ export class PahPublicLoginBrandingService extends BaseService {
         throw new CoolCommException(`品牌资源收据已变化：${name}`);
       }
     }
+    return this.compileManifestSnapshot(
+      plugin.manifest,
+      receipt.packageSha256,
+      declarations
+    );
+  }
+
+  private compileManifestSnapshot(
+    manifest: PahPluginManifest,
+    packageSha256: string,
+    declarations: Partial<
+      Record<AssetName, PahPublicLoginBrandingAssetDeclaration>
+    >
+  ) {
+    const contribution = manifest.uiContributions!;
     const background = declarations.background
       ? this.snapshotAsset('background', declarations.background)
       : undefined;
@@ -528,9 +600,9 @@ export class PahPublicLoginBrandingService extends BaseService {
       schemaVersion: RUNTIME_FORMAT_VERSION,
       mode: 'plugin',
       plugin: {
-        moduleId: plugin.moduleId,
-        version: plugin.version,
-        packageSha256: receipt.packageSha256,
+        moduleId: manifest.moduleId,
+        version: manifest.version,
+        packageSha256,
       },
       appName: contribution.brand.appName,
       titleTemplate: contribution.brand.titleTemplate,

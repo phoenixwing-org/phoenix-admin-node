@@ -1,5 +1,4 @@
-#!/usr/bin/env node
-
+const { execFileSync } = require('node:child_process');
 const { createHash, randomUUID } = require('node:crypto');
 const {
   closeSync,
@@ -11,11 +10,176 @@ const {
   readdirSync,
   readFileSync,
   renameSync,
+  realpathSync,
   rmSync,
   statSync,
   writeFileSync,
 } = require('node:fs');
 const path = require('node:path');
+
+const MODULE_ID_PATTERN = /^[a-z][a-z0-9-]{1,63}$/;
+const COMMIT_PATTERN = /^[a-f0-9]{40}$/;
+const HOST_MODULE_IDS = new Set([
+  'base',
+  'demo',
+  'dict',
+  'pah',
+  'plugin',
+  'recycle',
+  'space',
+  'swagger',
+  'task',
+  'user',
+]);
+
+function inside(root, candidate) {
+  const relative = path.relative(root, candidate);
+  return (
+    relative === '' ||
+    (!relative.startsWith('..') && !path.isAbsolute(relative))
+  );
+}
+
+function safeRealDirectory(value) {
+  try {
+    const resolved = realpathSync(value);
+    return statSync(resolved).isDirectory() ? resolved : null;
+  } catch {
+    return null;
+  }
+}
+
+function gitValue(root, args) {
+  try {
+    return execFileSync('git', args, {
+      cwd: root,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 3000,
+    }).trim();
+  } catch {
+    return null;
+  }
+}
+
+function inspectDevelopmentEntityModule(moduleId, moduleRoot) {
+  const nodeSource = safeRealDirectory(moduleRoot);
+  if (!nodeSource)
+    return { eligible: false, detail: 'Node symlink 目标不存在' };
+  const productRootValue = gitValue(nodeSource, [
+    'rev-parse',
+    '--show-toplevel',
+  ]);
+  const productRoot = productRootValue
+    ? safeRealDirectory(productRootValue)
+    : null;
+  if (!productRoot)
+    return { eligible: false, detail: '不属于可验证的 Git 产品仓' };
+  const sourceCommit = gitValue(productRoot, ['rev-parse', 'HEAD']);
+  if (!sourceCommit || !COMMIT_PATTERN.test(sourceCommit)) {
+    return { eligible: false, detail: '产品 HEAD 无法验证' };
+  }
+  const packageRoot = path.resolve(nodeSource, '..', '..');
+  const manifestFile = path.join(packageRoot, 'manifest.json');
+  const webSource = safeRealDirectory(path.join(packageRoot, 'vue', moduleId));
+  if (
+    !inside(productRoot, packageRoot) ||
+    !inside(productRoot, nodeSource) ||
+    !webSource ||
+    !inside(productRoot, webSource)
+  ) {
+    return { eligible: false, detail: '双端 payload 越出同一产品 Git 根' };
+  }
+  let manifest;
+  try {
+    manifest = JSON.parse(readFileSync(manifestFile, 'utf8'));
+  } catch {
+    return { eligible: false, detail: 'manifest 无法读取' };
+  }
+  if (
+    !manifest ||
+    manifest.formatVersion !== 2 ||
+    manifest.moduleId !== moduleId ||
+    manifest.activationMode !== 'restart' ||
+    !manifest.entrypoints ||
+    manifest.entrypoints.node !== `midway/${moduleId}/config.ts` ||
+    manifest.entrypoints.web !== `vue/${moduleId}/config.ts` ||
+    !existsSync(path.join(nodeSource, 'config.ts')) ||
+    !existsSync(path.join(webSource, 'config.ts'))
+  ) {
+    return { eligible: false, detail: 'manifest 身份或双端入口不匹配' };
+  }
+  if (manifest.pluginType === 'phoenix.admin.branding') {
+    return {
+      eligible: false,
+      state: 'ready',
+      detail: 'policy=no-entities 品牌插件不参与实体聚合',
+    };
+  }
+  const relativePaths = [manifestFile, nodeSource, webSource].map(item =>
+    path.relative(productRoot, item)
+  );
+  const dirty = gitValue(productRoot, [
+    'status',
+    '--porcelain',
+    '--',
+    ...relativePaths,
+  ]);
+  if (dirty === null || dirty.length > 0) {
+    return {
+      eligible: false,
+      detail: 'manifest 或双端 payload 存在未归档修改',
+    };
+  }
+  return { eligible: true, detail: `clean development ${sourceCommit}` };
+}
+
+function preflightRuntimeEntityModules(root) {
+  const modulesRoot = path.join(root, 'src', 'modules');
+  const ignoredModuleIds = [];
+  const inspections = [];
+  if (!existsSync(modulesRoot)) return { ignoredModuleIds, inspections };
+  for (const moduleId of readdirSync(modulesRoot).sort()) {
+    if (HOST_MODULE_IDS.has(moduleId)) continue;
+    const moduleRoot = path.join(modulesRoot, moduleId);
+    let current;
+    try {
+      current = lstatSync(moduleRoot);
+    } catch {
+      ignoredModuleIds.push(moduleId);
+      inspections.push({
+        moduleId,
+        eligible: false,
+        detail: '模块在扫描期间发生变化',
+      });
+      continue;
+    }
+    if (!current.isSymbolicLink()) {
+      if (current.isDirectory()) {
+        ignoredModuleIds.push(moduleId);
+        inspections.push({
+          moduleId,
+          eligible: false,
+          detail: '正式 payload 缺少启动前可信激活收据',
+        });
+      }
+      continue;
+    }
+    if (!MODULE_ID_PATTERN.test(moduleId)) {
+      ignoredModuleIds.push(moduleId);
+      inspections.push({
+        moduleId,
+        eligible: false,
+        detail: 'moduleId 格式不安全',
+      });
+      continue;
+    }
+    const inspection = inspectDevelopmentEntityModule(moduleId, moduleRoot);
+    inspections.push({ moduleId, ...inspection });
+    if (!inspection.eligible) ignoredModuleIds.push(moduleId);
+  }
+  return { ignoredModuleIds, inspections };
+}
 
 function requireAdminNodeRoot(value) {
   const root = path.resolve(value);
@@ -24,7 +188,9 @@ function requireAdminNodeRoot(value) {
   try {
     manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
   } catch {
-    throw new Error(`无法读取 Phoenix Admin Node package.json：${manifestPath}`);
+    throw new Error(
+      `无法读取 Phoenix Admin Node package.json：${manifestPath}`
+    );
   }
   if (manifest.name !== 'phoenix-admin-node') {
     throw new Error(`实体生成根目录不是 Phoenix Admin Node：${root}`);
@@ -39,9 +205,9 @@ function isDirectory(value) {
 function collectEntityFiles(directory, relative = '') {
   if (!existsSync(directory)) return [];
   const result = [];
-  for (const entry of readdirSync(directory, { withFileTypes: true }).sort((left, right) => (
-    left.name.localeCompare(right.name, 'en')
-  ))) {
+  for (const entry of readdirSync(directory, { withFileTypes: true }).sort(
+    (left, right) => left.name.localeCompare(right.name, 'en')
+  )) {
     const absolute = path.join(directory, entry.name);
     const currentRelative = relative ? `${relative}/${entry.name}` : entry.name;
     const current = lstatSync(absolute);
@@ -59,7 +225,7 @@ function collectEntityFiles(directory, relative = '') {
   return result;
 }
 
-function discoverRuntimeEntities(root) {
+function discoverRuntimeEntities(root, ignoredModuleIds = new Set()) {
   const modulesRoot = path.join(root, 'src', 'modules');
   if (!existsSync(modulesRoot)) return [];
   if (!isDirectory(modulesRoot)) {
@@ -67,9 +233,10 @@ function discoverRuntimeEntities(root) {
   }
 
   const files = [];
-  for (const entry of readdirSync(modulesRoot, { withFileTypes: true }).sort((left, right) => (
-    left.name.localeCompare(right.name, 'en')
-  ))) {
+  for (const entry of readdirSync(modulesRoot, { withFileTypes: true }).sort(
+    (left, right) => left.name.localeCompare(right.name, 'en')
+  )) {
+    if (ignoredModuleIds.has(entry.name)) continue;
     const moduleRoot = path.join(modulesRoot, entry.name);
     const current = lstatSync(moduleRoot);
     if (!current.isDirectory() && !current.isSymbolicLink()) continue;
@@ -102,14 +269,20 @@ function fixedHostEntityFiles(root) {
 }
 
 function renderRuntimeEntities(files) {
-  const imports = files.map((file, index) => (
-    `import * as pluginEntity${index} from './${file.replace(/\.ts$/, '')}';`
-  ));
-  const values = files.map((_, index) => `...Object.values(pluginEntity${index})`);
-  const exportBlock = values.length === 0
-    ? 'export const pluginEntities = [];\n'
-    : `export const pluginEntities = [\n  ${values.join(',\n  ')},\n];\n`;
-  return `// 自动生成的插件实体清单，请勿手动修改\n${imports.join('\n')}${imports.length ? '\n' : ''}${exportBlock}`;
+  const imports = files.map(
+    (file, index) =>
+      `import * as pluginEntity${index} from './${file.replace(/\.ts$/, '')}';`
+  );
+  const values = files.map(
+    (_, index) => `...Object.values(pluginEntity${index})`
+  );
+  const exportBlock =
+    values.length === 0
+      ? 'export const pluginEntities = [];\n'
+      : `export const pluginEntities = [\n  ${values.join(',\n  ')},\n];\n`;
+  return `// 自动生成的插件实体清单，请勿手动修改\n${imports.join('\n')}${
+    imports.length ? '\n' : ''
+  }${exportBlock}`;
 }
 
 function replaceFileAtomically(target, content) {
@@ -132,34 +305,185 @@ function replaceFileAtomically(target, content) {
         renameSync(temporary, target);
         rmSync(backup, { force: true });
       } catch (replaceError) {
-        if (!existsSync(target) && existsSync(backup)) renameSync(backup, target);
+        if (!existsSync(target) && existsSync(backup))
+          renameSync(backup, target);
         throw replaceError;
       }
     }
   } finally {
     if (descriptor !== undefined) closeSync(descriptor);
     rmSync(temporary, { force: true });
-    if (existsSync(backup) && existsSync(target)) rmSync(backup, { force: true });
+    if (existsSync(backup) && existsSync(target))
+      rmSync(backup, { force: true });
   }
 }
 
-function syncRuntimeEntities(inputRoot) {
-  const root = requireAdminNodeRoot(inputRoot);
-  const discovered = discoverRuntimeEntities(root);
+function writeRuntimeTsconfig(root, ignoredModuleIds) {
+  const base = path.join(root, 'tsconfig.json');
+  if (!existsSync(base)) return null;
+  const target = path.join(root, '.runtime', 'tsconfig.phoenix.json');
+  const value = {
+    extends: '../tsconfig.json',
+    include: ['../src/**/*.ts'],
+    exclude: [
+      '../dist',
+      '../node_modules',
+      '../test',
+      ...ignoredModuleIds.map(moduleId => `../src/modules/${moduleId}/**/*`),
+    ],
+  };
+  replaceFileAtomically(target, `${JSON.stringify(value, null, 2)}\n`);
+  return target;
+}
+
+function renderEntitySelection(root, ignoredModuleIds) {
+  const ignored = new Set(ignoredModuleIds);
+  const discovered = discoverRuntimeEntities(root, ignored);
   const fixed = fixedHostEntityFiles(root);
-  const missingHostFiles = [...fixed].filter(file => !discovered.includes(file));
+  const missingHostFiles = [...fixed].filter(
+    file => !discovered.includes(file)
+  );
   if (missingHostFiles.length > 0) {
     throw new Error(`Host 固定实体文件缺失：${missingHostFiles.join('、')}`);
   }
   const files = discovered.filter(file => !fixed.has(file));
-  const content = renderRuntimeEntities(files);
+  return { files, content: renderRuntimeEntities(files) };
+}
+
+function checkTypeScriptCompatibility(root, ignoredModuleIds) {
+  try {
+    const selection = renderEntitySelection(root, ignoredModuleIds);
+    replaceFileAtomically(
+      path.join(root, 'src', 'entities.plugin.ts'),
+      selection.content
+    );
+    const tsconfig = writeRuntimeTsconfig(root, ignoredModuleIds);
+    if (!tsconfig) return { valid: true, detail: 'fixture without tsconfig' };
+    execFileSync(
+      process.execPath,
+      [
+        require.resolve('typescript/bin/tsc'),
+        '-p',
+        tsconfig,
+        '--noEmit',
+        '--pretty',
+        'false',
+      ],
+      {
+        cwd: root,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+        timeout: 30000,
+      }
+    );
+    return { valid: true, detail: 'Host TypeScript compatibility passed' };
+  } catch (error) {
+    const stderr =
+      error && typeof error === 'object' && 'stderr' in error
+        ? String(error.stderr || '')
+        : '';
+    const stdout =
+      error && typeof error === 'object' && 'stdout' in error
+        ? String(error.stdout || '')
+        : '';
+    const firstDiagnostic = `${stdout}\n${stderr}`
+      .split(/\r?\n/)
+      .map(line => line.trim())
+      .find(Boolean);
+    return {
+      valid: false,
+      detail:
+        firstDiagnostic ||
+        (error instanceof Error ? error.message : String(error)) ||
+        'TypeScript compatibility command failed',
+    };
+  }
+}
+
+function verifyPluginCompatibility(root, preflight, explicitIgnoredModuleIds) {
+  const externalModuleIds = preflight.inspections.map(item => item.moduleId);
+  const identityRejected = preflight.inspections
+    .filter(item => !item.eligible)
+    .map(item => item.moduleId);
+  const baselineIgnored = [
+    ...new Set([...explicitIgnoredModuleIds, ...externalModuleIds]),
+  ].sort();
+  const baseline = checkTypeScriptCompatibility(root, baselineIgnored);
+  if (!baseline.valid) {
+    throw new Error(`纯 Host TypeScript 基线失败：${baseline.detail}`);
+  }
+  for (const inspection of preflight.inspections.filter(
+    item => item.eligible
+  )) {
+    const ignored = [
+      ...new Set([
+        ...explicitIgnoredModuleIds,
+        ...identityRejected,
+        ...externalModuleIds.filter(
+          moduleId => moduleId !== inspection.moduleId
+        ),
+      ]),
+    ].sort();
+    const compatibility = checkTypeScriptCompatibility(root, ignored);
+    if (compatibility.valid) {
+      inspection.detail = `${inspection.detail}; TypeScript compatibility passed`;
+    } else {
+      inspection.eligible = false;
+      inspection.detail = `Host TypeScript compatibility failed: ${compatibility.detail}`;
+    }
+  }
+}
+
+function writeCompileInspection(root, ignoredModuleIds, inspections) {
+  const target = path.join(root, '.runtime', 'pah-plugin-compile.json');
+  replaceFileAtomically(
+    target,
+    `${JSON.stringify(
+      {
+        formatVersion: 1,
+        ignoredModuleIds,
+        inspections,
+      },
+      null,
+      2
+    )}\n`
+  );
+  return target;
+}
+
+function syncRuntimeEntities(inputRoot, options = {}) {
+  const root = requireAdminNodeRoot(inputRoot);
+  const preflight = preflightRuntimeEntityModules(root);
+  const explicitIgnoredModuleIds = options.ignoredModuleIds || [];
+  verifyPluginCompatibility(root, preflight, explicitIgnoredModuleIds);
+  const ignoredModuleIds = new Set([
+    ...explicitIgnoredModuleIds,
+    ...preflight.inspections
+      .filter(item => !item.eligible)
+      .map(item => item.moduleId),
+  ]);
+  const sortedIgnoredModuleIds = [...ignoredModuleIds].sort();
+  const { files, content } = renderEntitySelection(
+    root,
+    sortedIgnoredModuleIds
+  );
   const output = path.join(root, 'src', 'entities.plugin.ts');
   replaceFileAtomically(output, content);
+  const tsconfig = writeRuntimeTsconfig(root, sortedIgnoredModuleIds);
+  const inspectionFile = writeCompileInspection(
+    root,
+    sortedIgnoredModuleIds,
+    preflight.inspections
+  );
   return {
     root,
     output,
     count: files.length,
     files,
+    ignoredModuleIds: sortedIgnoredModuleIds,
+    inspections: preflight.inspections,
+    inspectionFile,
+    tsconfig,
     sha256: createHash('sha256').update(content).digest('hex'),
   };
 }
@@ -171,15 +495,41 @@ function cliRoot(argv) {
   return argv[rootIndex + 1];
 }
 
+function cliIgnoredModuleIds(argv) {
+  const result = [];
+  for (let index = 0; index < argv.length; index += 1) {
+    if (argv[index] !== '--ignore-module') continue;
+    const moduleId = argv[index + 1];
+    if (!moduleId || !/^[a-z][a-z0-9-]*$/.test(moduleId)) {
+      throw new Error('--ignore-module 缺少安全 moduleId');
+    }
+    result.push(moduleId);
+    index += 1;
+  }
+  return result;
+}
+
 if (require.main === module) {
   try {
-    const result = syncRuntimeEntities(cliRoot(process.argv.slice(2)));
+    const argv = process.argv.slice(2);
+    const result = syncRuntimeEntities(cliRoot(argv), {
+      ignoredModuleIds: cliIgnoredModuleIds(argv),
+    });
+    for (const inspection of result.inspections) {
+      const state =
+        inspection.state || (inspection.eligible ? 'ready' : 'quarantined');
+      process.stdout.write(
+        `[phoenix-plugin-health] host=node phase=entities module=${inspection.moduleId} state=${state} detail=${inspection.detail}\n`
+      );
+    }
     process.stdout.write(
-      `[Pah entities] synchronized count=${result.count} sha256=${result.sha256}\n`
+      `[Pah entities] synchronized count=${result.count} ignored=${result.ignoredModuleIds.length} sha256=${result.sha256}\n`
     );
   } catch (error) {
     process.stderr.write(
-      `[Pah entities] failed: ${error instanceof Error ? error.message : String(error)}\n`
+      `[Pah entities] failed: ${
+        error instanceof Error ? error.message : String(error)
+      }\n`
     );
     process.exitCode = 1;
   }
@@ -189,5 +539,8 @@ module.exports = {
   discoverRuntimeEntities,
   fixedHostEntityFiles,
   renderRuntimeEntities,
+  preflightRuntimeEntityModules,
+  verifyPluginCompatibility,
   syncRuntimeEntities,
+  writeRuntimeTsconfig,
 };

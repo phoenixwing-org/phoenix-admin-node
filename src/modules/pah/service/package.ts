@@ -16,7 +16,7 @@ import { ILogger, Inject, Logger, Provide } from '@midwayjs/core';
 import * as path from 'path';
 import {
   PahPluginManifest,
-  validatePahPluginManifest,
+  validatePhoenixPluginManifest,
 } from '../interface/plugin';
 import { PahLocalPluginBackupService } from './local-backup';
 import { PahPluginService } from './plugin';
@@ -724,7 +724,7 @@ export class PahPluginPackageService extends BaseService {
       algorithm?: string;
       files?: PackageIntegrityItem[];
     }>(entries, 'integrity.json');
-    const validation = validatePahPluginManifest(manifest);
+    const validation = validatePhoenixPluginManifest(manifest);
     if (!validation.valid) {
       throw new CoolCommException(validation.errors.join('；'));
     }

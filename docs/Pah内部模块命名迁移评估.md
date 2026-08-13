@@ -39,6 +39,32 @@ API 已经是 `/admin/phoenix/plugin`。因此当前没有为了品牌展示而�
 复现盘点时应排除 `.git`、`node_modules`、`dist` 和 coverage，并分别统计源码、测试、脚本、
 文档和产品制品，不能把历史文档命中直接当成生产改动。
 
+### 2026-08-13 当前 HEAD 复核
+
+本节只更新评估证据，不改变上面的冻结输入，也不表示已经批准实施目录迁移。复核提交为：
+
+| 对象 | 当前提交 | 复核结果 |
+| --- | --- | --- |
+| Admin Node | `fc7b3dd0d380801bf5d1bdfbb87b11552927d22e` | `src/modules/pah` 仍为 36 个文件；插件启动健康与编译隔离继续使用现有物理目录 |
+| Admin Vue | `11fab10882a15a5b800cc9707b00ba4df2bb80e7` | `src/pah` 与 `src/modules/pah` 均保留；外部插件由 Host 虚拟入口隔离加载 |
+| Phoenix Dev Hub | `6e58c859d10ac5e009d16ef0cd3de0c6a0ab22ed` | 旧 `/admin/pah/plugin/*` 调用已改为 `/admin/phoenix/plugin/*`，Hub 只维护 symlink/Git exclude |
+
+结论保持不变：**方案 A 在单独迁移窗口内可行，但不是当前纯 Host 与插件生命周期恢复的前置项；方案 B
+仍不应实施。** 当前新增的公开登录品牌、动态插件实体清单和插件启动健康检查进一步扩大了物理路径迁移
+的回归面，但没有产生必须立刻改名的新理由。
+
+本次复核确认以下风险仍然存在：
+
+- Identity 控制器仍使用无显式 prefix 的 `@CoolController()`，Navigation 也未显式锁定旧
+  `/admin/pah/*` 公共前缀；移动目录前仍必须先锁路由并补枚举测试；
+- Node `package.json` 仍打包 `dist/modules/pah` 下的 Host schema、baseline 和 SQL 资产；
+- Vue 的 `/@/pah/*` 实际依赖通用 `/@ -> src` alias，物理目录移动后必须增加显式兼容 facade，
+  不能只修改 Host 自身 import；
+- Dev Hub 的插件 API 已改为 `/admin/phoenix/plugin/*`；该修复不改变物理目录迁移结论，也不得以此为由
+  重新开放旧接口；
+- `validatePahPluginManifest` 改为更直观的内部函数名 `validatePhoenixPluginManifest`，只属于内部符号
+  整理，不等于批准移动 `src/modules/pah`，也不得顺带修改 wire、表名、权限或制品标识。
+
 ## 当前标识分层
 
 ### 只属于内部实现的标识

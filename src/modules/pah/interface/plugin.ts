@@ -296,7 +296,7 @@ export function pahCapabilityPermissionTokens(
  *
  * 首版只接收 restart 激活模式；这里不加载入口文件，更不会 eval 插件内容。
  */
-export function validatePahPluginManifest(
+export function validatePhoenixPluginManifest(
   manifest: unknown
 ): PahManifestValidationResult {
   const errors: string[] = [];
