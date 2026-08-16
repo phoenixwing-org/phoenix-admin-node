@@ -149,6 +149,16 @@ describe('Midway 4 compatibility baseline', () => {
     );
   });
 
+  it('passes production bootstrap imports as a Midway 4 module list', () => {
+    const bootstrap = readFileSync(
+      join(process.cwd(), 'bootstrap.js'),
+      'utf8'
+    );
+
+    expect(bootstrap).toContain("imports: [require('./dist/index')]");
+    expect(bootstrap).not.toContain("imports: require('./dist/index')");
+  });
+
   it('publishes the Host and Midway version with official framework links', () => {
     const welcome = readFileSync(
       join(process.cwd(), 'public/index.html'),
