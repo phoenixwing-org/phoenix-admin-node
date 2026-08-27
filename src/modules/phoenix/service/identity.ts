@@ -77,7 +77,7 @@ export class PahIdentityRateLimiter {
 
 @Provide()
 export class PahIdentityService {
-  @Config('module.pah.identity')
+  @Config('module.phoenix.identity')
   config: PahIdentityConfig;
 
   @InjectEntityModel(PahExternalIdentityEntity)

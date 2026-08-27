@@ -6,7 +6,7 @@ const { Client } = require('pg');
 
 const baselineRoot = path.resolve(
   __dirname,
-  '../src/modules/pah/host-baseline'
+  '../src/modules/phoenix/host-baseline'
 );
 const safeIdentifier = /^[a-z][a-z0-9_]{0,62}$/u;
 const sha256Pattern = /^[a-f0-9]{64}$/u;

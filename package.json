@@ -99,10 +99,10 @@
       "dist/modules/*/pah-plugin.artifacts.json",
       "dist/modules/*/migrations/**/*.sql",
       "dist/modules/*/runtime/**/*.cjs",
-      "dist/modules/pah/pah-host-schema.json",
-      "dist/modules/pah/schema/**/*.sql",
-      "dist/modules/pah/host-baseline/**/*.json",
-      "dist/modules/pah/host-baseline/**/*.sql"
+      "dist/modules/phoenix/pah-host-schema.json",
+      "dist/modules/phoenix/schema/**/*.sql",
+      "dist/modules/phoenix/host-baseline/**/*.json",
+      "dist/modules/phoenix/host-baseline/**/*.sql"
     ],
     "targets": [
       "node20-win-x64"

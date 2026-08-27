@@ -29,7 +29,9 @@ const HOST_MODULE_IDS = new Set([
   'base',
   'demo',
   'dict',
+  // `phoenix` is canonical; keep `pah` as a fixed legacy fixture/module id.
   'pah',
+  'phoenix',
   'plugin',
   'recycle',
   'space',

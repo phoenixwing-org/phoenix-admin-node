@@ -23,7 +23,10 @@ const HOST_MODULE_IDS = new Set([
   'base',
   'demo',
   'dict',
+  // `phoenix` is the canonical Host module directory. `pah` remains here only
+  // for frozen pre-rename fixtures and must never be treated as a business plugin.
   'pah',
+  'phoenix',
   'plugin',
   'recycle',
   'space',

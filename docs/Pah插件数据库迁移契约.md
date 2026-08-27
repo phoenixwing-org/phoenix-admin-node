@@ -51,7 +51,7 @@ manifest 的每条迁移声明唯一 SQL 路径：
 
 ## 挂载与构建
 
-插件在自己的模块根提供稳定的编译制品描述符，不相对导入 Host `src/modules/pah`，也不在 Host 源码登记产品 ID：
+插件在自己的模块根提供稳定的编译制品描述符，不相对导入 Host `src/modules/phoenix`，也不在 Host 源码登记产品 ID：
 
 ```json
 {
@@ -89,7 +89,7 @@ postinstall，不搜索或复制插件 `node_modules`，也不联网安装产品
 消费侧固定采用“通用构建装配器自动发现”，不采用插件主动调用 Host service 或 IoC token：
 
 1. 插件仓维护 manifest v2、descriptor、实体和 `migrations/`；manifest 与 descriptor 的 `moduleId`/版本必须一致，`moduleId` 还必须与模块目录名一致；
-2. 插件源码不得通过相对路径导入 Host 的 `src/modules/pah`，也不得调用 `PahCompiledPluginRegistry.register()`；该方法只供 Host 内部装配和测试使用；
+2. 插件源码不得通过相对路径导入 Host 的 `src/modules/phoenix`，也不得调用 `PahCompiledPluginRegistry.register()`；该方法只供 Host 内部装配和测试使用；
 3. 受控构建把插件模块挂载到通用 `src/modules/<moduleId>` 槽位，装配器自动校验并复制制品；
 4. 运行时只以已登记 manifest 的 `moduleId` 查找同名编译输出，不扫描或执行插件提供的注册代码。
 

@@ -3,33 +3,39 @@ import { BaseController, CoolController } from '@cool-midway/core';
 import { PahNavigationGroupEntity } from '../../entity/navigation-group';
 import { PahNavigationService } from '../../service/navigation';
 
-/** Phoenix 工作台大分组的读取与维护。 */
+/**
+ * 旧 Host 导航 API 的只读兼容入口。
+ *
+ * 新调用方必须使用 /admin/phoenix/navigation；保留该入口仅用于已发布的
+ * Host 页面和管理员工具，避免物理目录迁移破坏既有深链。
+ */
 @Provide()
 @CoolController({
+  prefix: '/admin/pah/navigation',
   api: ['info', 'list', 'page'],
   entity: PahNavigationGroupEntity,
   service: PahNavigationService,
 })
-export class PahNavigationController extends BaseController {
+export class LegacyPahNavigationController extends BaseController {
   @Inject()
   pahNavigationService: PahNavigationService;
 
-  @Get('/read', { summary: '读取工作台大分组及模块归属' })
+  @Get('/read')
   async read() {
     return this.ok(await this.pahNavigationService.read());
   }
 
-  @Post('/save-group', { summary: '新建或更新工作台大分组' })
+  @Post('/save-group')
   async saveGroup(@Body() input: any) {
     return this.ok(await this.pahNavigationService.saveGroup(input));
   }
 
-  @Post('/remove-group', { summary: '删除自定义工作台大分组' })
+  @Post('/remove-group')
   async removeGroup(@Body('id') id: number) {
     return this.ok(await this.pahNavigationService.removeGroup(Number(id)));
   }
 
-  @Post('/assign', { summary: '配置模块所属工作台大分组' })
+  @Post('/assign')
   async assign(
     @Body('targetKey') targetKey: string,
     @Body('groupId') groupId: number

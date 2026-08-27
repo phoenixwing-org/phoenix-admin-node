@@ -1,12 +1,12 @@
-import { PahPluginManifest } from '../../../src/modules/pah/interface/plugin';
+import { PahPluginManifest } from '../../../src/modules/phoenix/interface/plugin';
 import { DictInfoEntity } from '../../../src/modules/dict/entity/info';
 import { DictTypeEntity } from '../../../src/modules/dict/entity/type';
-import { PahDictionaryReconcileRecordEntity } from '../../../src/modules/pah/entity/dictionary-reconcile-record';
+import { PahDictionaryReconcileRecordEntity } from '../../../src/modules/phoenix/entity/dictionary-reconcile-record';
 import {
   PahDictionaryService,
   PahDictionarySnapshot,
   planPahDictionaryReconcile,
-} from '../../../src/modules/pah/service/dictionary';
+} from '../../../src/modules/phoenix/service/dictionary';
 
 function manifest(): PahPluginManifest {
   return {

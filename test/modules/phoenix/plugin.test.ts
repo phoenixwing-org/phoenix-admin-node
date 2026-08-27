@@ -11,27 +11,27 @@ import {
 } from 'fs';
 import { tmpdir } from 'os';
 import * as path from 'path';
-import { PahPluginInstallationEntity } from '../../../src/modules/pah/entity/plugin';
-import { PahPluginMigrationRecordEntity } from '../../../src/modules/pah/entity/migration-record';
+import { PahPluginInstallationEntity } from '../../../src/modules/phoenix/entity/plugin';
+import { PahPluginMigrationRecordEntity } from '../../../src/modules/phoenix/entity/migration-record';
 import {
   canTransitionPahPlugin,
   PAH_PLUGIN_FORMAT_VERSION,
   PahPluginLifecycleState,
   PahPluginManifest,
   validatePhoenixPluginManifest,
-} from '../../../src/modules/pah/interface/plugin';
+} from '../../../src/modules/phoenix/interface/plugin';
 import {
   PAH_BUILTIN_NAVIGATION_GROUPS,
   PAH_BUSINESS_NAVIGATION_GROUP_KEY,
   PahNavigationService,
-} from '../../../src/modules/pah/service/navigation';
+} from '../../../src/modules/phoenix/service/navigation';
 import {
   checksumPahSqlArtifact,
   PahCompiledPluginRegistry,
   PahMigrationBackupGate,
   PahPluginMigrationService,
-} from '../../../src/modules/pah/service/migration';
-import { PahPluginService } from '../../../src/modules/pah/service/plugin';
+} from '../../../src/modules/phoenix/service/migration';
+import { PahPluginService } from '../../../src/modules/phoenix/service/plugin';
 
 const MODULE_ID = 'example-plugin';
 const MIGRATION_FIXTURE_ROOT = path.resolve(
@@ -649,8 +649,8 @@ describe('Pah 通用 SQL 迁移执行器', () => {
     mkdirSync(path.dirname(sourceRoot), { recursive: true });
     cpSync(MIGRATION_FIXTURE_ROOT, sourceRoot, { recursive: true });
     cpSync(
-      path.resolve(__dirname, '../../../src/modules/pah'),
-      path.join(tempRoot, 'src/modules/pah'),
+      path.resolve(__dirname, '../../../src/modules/phoenix'),
+      path.join(tempRoot, 'src/modules/phoenix'),
       { recursive: true }
     );
     writeCompileReceipt(tempRoot);

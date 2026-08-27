@@ -5,12 +5,12 @@ import {
   PahFeishuIdentityConfig,
   PahIdentityConfig,
   PahIdentityFlowError,
-} from '../../../src/modules/pah/interface/identity';
-import { PahFeishuIdentityProvider } from '../../../src/modules/pah/provider/feishu';
+} from '../../../src/modules/phoenix/interface/identity';
+import { PahFeishuIdentityProvider } from '../../../src/modules/phoenix/provider/feishu';
 import {
   PahIdentityRateLimiter,
   PahIdentityService,
-} from '../../../src/modules/pah/service/identity';
+} from '../../../src/modules/phoenix/service/identity';
 import { BaseOpenController } from '../../../src/modules/base/controller/admin/open';
 
 const feishuConfig: PahFeishuIdentityConfig = {

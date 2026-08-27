@@ -1,5 +1,5 @@
-import { PahPluginController } from '../../../src/modules/pah/controller/admin/plugin';
-import { PahPluginService } from '../../../src/modules/pah/service/plugin';
+import { PahPluginController } from '../../../src/modules/phoenix/controller/admin/plugin';
+import { PahPluginService } from '../../../src/modules/phoenix/service/plugin';
 
 const MODULE_ID = 'example-plugin';
 

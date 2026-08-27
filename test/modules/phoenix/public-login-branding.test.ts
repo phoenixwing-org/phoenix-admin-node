@@ -14,9 +14,9 @@ import {
   validatePahPublicLoginBrandingContributions,
   validatePahPublicLoginBrandingSnapshot,
   withPahPublicLoginBrandingRevision,
-} from '../../../src/modules/pah/interface/public-login-branding';
-import { PahPluginManifest } from '../../../src/modules/pah/interface/plugin';
-import { PahPublicLoginBrandingService } from '../../../src/modules/pah/service/public-login-branding';
+} from '../../../src/modules/phoenix/interface/public-login-branding';
+import { PahPluginManifest } from '../../../src/modules/phoenix/interface/plugin';
+import { PahPublicLoginBrandingService } from '../../../src/modules/phoenix/service/public-login-branding';
 
 const MODULE_ID = 'phoenix-branding';
 

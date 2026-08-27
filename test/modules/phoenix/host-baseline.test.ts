@@ -6,7 +6,7 @@ import * as path from 'path';
 
 const baselineRoot = path.resolve(
   __dirname,
-  '../../../src/modules/pah/host-baseline'
+  '../../../src/modules/phoenix/host-baseline'
 );
 // eslint-disable-next-line node/no-unpublished-require
 const baseline = require('../../../scripts/pah-host-baseline.cjs');

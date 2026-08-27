@@ -5,7 +5,7 @@ import { PahIdentityService } from '../../service/identity';
 
 /** Host-owned 外部身份待审查与绑定管理。 */
 @Provide()
-@CoolController()
+@CoolController('/admin/phoenix/identity')
 export class PahIdentityController extends BaseController {
   @Inject()
   pahIdentityService: PahIdentityService;

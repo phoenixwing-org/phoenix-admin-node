@@ -10,11 +10,11 @@ import {
 import { tmpdir } from 'os';
 import * as path from 'path';
 import { execFileSync } from 'child_process';
-import { PAH_PLUGIN_FORMAT_VERSION } from '../../../src/modules/pah/interface/plugin';
+import { PAH_PLUGIN_FORMAT_VERSION } from '../../../src/modules/phoenix/interface/plugin';
 import {
   inspectPhoenixPluginModules,
   PhoenixPluginStartupHealthService,
-} from '../../../src/modules/pah/service/startup-health';
+} from '../../../src/modules/phoenix/service/startup-health';
 
 function sha256(value: Buffer | string) {
   return createHash('sha256').update(value).digest('hex');

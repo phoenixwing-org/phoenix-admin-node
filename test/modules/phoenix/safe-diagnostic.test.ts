@@ -1,4 +1,4 @@
-import { safeStartupDiagnostic } from '../../../src/modules/pah/service/safe-diagnostic';
+import { safeStartupDiagnostic } from '../../../src/modules/phoenix/service/safe-diagnostic';
 
 describe('Phoenix 启动诊断脱敏', () => {
   it('截断并移除凭据、敏感查询和本机绝对路径', () => {

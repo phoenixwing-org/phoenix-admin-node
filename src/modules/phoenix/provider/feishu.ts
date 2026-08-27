@@ -10,7 +10,7 @@ import {
 @Provide()
 @Scope(ScopeEnum.Singleton)
 export class PahFeishuIdentityProvider {
-  @Config('module.pah.identity.feishu')
+  @Config('module.phoenix.identity.feishu')
   config: PahFeishuIdentityConfig;
 
   client: AxiosInstance;

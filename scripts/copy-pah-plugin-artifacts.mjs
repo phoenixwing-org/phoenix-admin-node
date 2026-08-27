@@ -407,8 +407,8 @@ for (const entry of await readdir(sourceModules, { withFileTypes: true })) {
   }
 }
 
-const pahSourceRoot = path.join(sourceModules, 'pah');
-const pahTargetRoot = path.join(targetModules, 'pah');
+const pahSourceRoot = path.join(sourceModules, 'phoenix');
+const pahTargetRoot = path.join(targetModules, 'phoenix');
 const hostSchemaDescriptorPath = path.join(
   pahSourceRoot,
   hostSchemaDescriptorName

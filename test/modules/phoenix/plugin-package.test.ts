@@ -12,9 +12,9 @@ import {
 } from 'fs';
 import { tmpdir } from 'os';
 import * as path from 'path';
-import { PAH_PLUGIN_FORMAT_VERSION } from '../../../src/modules/pah/interface/plugin';
-import { PahLocalPluginBackupService } from '../../../src/modules/pah/service/local-backup';
-import { PahPluginPackageService } from '../../../src/modules/pah/service/package';
+import { PAH_PLUGIN_FORMAT_VERSION } from '../../../src/modules/phoenix/interface/plugin';
+import { PahLocalPluginBackupService } from '../../../src/modules/phoenix/service/local-backup';
+import { PahPluginPackageService } from '../../../src/modules/phoenix/service/package';
 
 const MODULE_ID = 'example-plugin';
 

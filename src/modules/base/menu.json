@@ -650,12 +650,12 @@
             },
             {
                 "name": "字典维护",
-                "router": "/pah/dictionary-maintenance",
+                "router": "/phoenix/dictionary-maintenance",
                 "perms": null,
                 "type": 1,
                 "icon": "icon-dict",
                 "orderNum": 4,
-                "viewPath": "modules/pah/views/dictionary-maintenance.vue",
+                "viewPath": "modules/phoenix/views/dictionary-maintenance.vue",
                 "keepAlive": true,
                 "isShow": true,
                 "childMenus": [

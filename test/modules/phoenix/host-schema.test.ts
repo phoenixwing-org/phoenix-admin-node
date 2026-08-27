@@ -2,7 +2,7 @@ import { createHash } from 'crypto';
 import { readFileSync, readdirSync } from 'fs';
 import * as path from 'path';
 
-const pahRoot = path.resolve(__dirname, '../../../src/modules/pah');
+const pahRoot = path.resolve(__dirname, '../../../src/modules/phoenix');
 
 describe('Pah Host schema 制品', () => {
   it('声明、SQL 文件和 SHA-256 一一对应', () => {

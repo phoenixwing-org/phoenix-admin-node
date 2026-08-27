@@ -22,13 +22,13 @@ import { BaseSysLoginService } from '../../service/sys/login';
 import { BaseSysParamService } from '../../service/sys/param';
 import { Context } from '@midwayjs/koa';
 import { Validate } from '@midwayjs/validate';
-import { PahIdentityService } from '../../../pah/service/identity';
+import { PahIdentityService } from '../../../phoenix/service/identity';
 import {
   pahIdentityCallbackUrl,
   PahIdentityConfig,
   PahIdentityFlowError,
-} from '../../../pah/interface/identity';
-import { PahPublicLoginBrandingService } from '../../../pah/service/public-login-branding';
+} from '../../../phoenix/interface/identity';
+import { PahPublicLoginBrandingService } from '../../../phoenix/service/public-login-branding';
 
 /**
  * 不需要登录的后台接口
@@ -55,7 +55,7 @@ export class BaseOpenController extends BaseController {
   @Inject()
   pahPublicLoginBrandingService: PahPublicLoginBrandingService;
 
-  @Config('module.pah.identity')
+  @Config('module.phoenix.identity')
   identityConfig: PahIdentityConfig;
 
   /**

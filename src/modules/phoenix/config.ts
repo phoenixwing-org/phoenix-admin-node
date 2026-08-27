@@ -3,7 +3,7 @@ import { ModuleConfig } from '@cool-midway/core';
 /**
  * Phoenix Admin Host 模块配置。
  *
- * Pah 只负责宿主契约与生命周期编排，不执行第三方插件源码。
+ * Phoenix Host 只负责宿主契约与生命周期编排，不执行第三方插件源码。
  */
 export default () => {
   const list = (value?: string) => [

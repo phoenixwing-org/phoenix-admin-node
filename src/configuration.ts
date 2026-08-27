@@ -23,12 +23,12 @@ import * as upload from '@midwayjs/upload';
 import { execFileSync } from 'child_process';
 import { existsSync } from 'fs';
 import * as path from 'path';
-import { PahPublicLoginBrandingService } from './modules/pah/service/public-login-branding';
+import { PahPublicLoginBrandingService } from './modules/phoenix/service/public-login-branding';
 import {
   inspectPhoenixPluginModules,
   PhoenixPluginStartupHealthService,
-} from './modules/pah/service/startup-health';
-import { safeStartupDiagnostic } from './modules/pah/service/safe-diagnostic';
+} from './modules/phoenix/service/startup-health';
+import { safeStartupDiagnostic } from './modules/phoenix/service/safe-diagnostic';
 // import * as task from '@cool-midway/task';
 // import * as rpc from '@cool-midway/rpc';
 
