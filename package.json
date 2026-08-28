@@ -64,8 +64,8 @@
   },
   "scripts": {
     "start": "NODE_ENV=production node ./bootstrap.js",
-    "dev": "rimraf src/index.ts && cool check && node scripts/pah-sync-runtime-entities.cjs && cross-env NODE_ENV=local PAH_DEV_DISABLE_CAPTCHA=true mwtsc -p .runtime/tsconfig.phoenix.json --cleanOutDir --watch --run ./scripts/dev-midway4.js --keepalive",
-    "dev:midway4": "rimraf src/index.ts && node scripts/pah-sync-runtime-entities.cjs && cross-env NODE_ENV=midway4 mwtsc -p .runtime/tsconfig.phoenix.json --cleanOutDir --watch --run ./scripts/dev-midway4.js --keepalive",
+    "dev": "rimraf src/index.ts && cool check && node scripts/pah-sync-runtime-entities.cjs && cross-env NODE_ENV=local PAH_DEV_DISABLE_CAPTCHA=true PAH_RUNTIME_ENTITIES_PREPARED=true mwtsc -p .runtime/tsconfig.phoenix.json --cleanOutDir --watch --run ./scripts/dev-midway4.js --keepalive",
+    "dev:midway4": "rimraf src/index.ts && node scripts/pah-sync-runtime-entities.cjs && cross-env NODE_ENV=midway4 PAH_RUNTIME_ENTITIES_PREPARED=true mwtsc -p .runtime/tsconfig.phoenix.json --cleanOutDir --watch --run ./scripts/dev-midway4.js --keepalive",
     "dev:plugin-installer": "pnpm run build && cross-env NODE_ENV=production PAH_LOCAL_PACKAGE_MODE=true PAH_DB_SYNCHRONIZE=false PAH_DB_INITIALIZE=false node bootstrap.js",
     "test": "cross-env NODE_ENV=unittest jest",
     "test:ci": "cross-env NODE_ENV=unittest jest --runInBand --passWithNoTests",

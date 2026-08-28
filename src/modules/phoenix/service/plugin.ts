@@ -22,6 +22,7 @@ import {
   validatePhoenixPluginManifest,
 } from '../interface/plugin';
 import { PahPublicLoginBrandingService } from './public-login-branding';
+import { PahPluginRuntimeActivationService } from './runtime-activation';
 
 function stateTime() {
   return new Date().toISOString();
@@ -67,6 +68,9 @@ export class PahPluginService extends BaseService {
 
   @Inject()
   pahPublicLoginBrandingService: PahPublicLoginBrandingService;
+
+  @Inject()
+  pahPluginRuntimeActivationService: PahPluginRuntimeActivationService;
 
   async register(manifest: PahPluginManifest) {
     this.requireHostAdmin();
@@ -166,14 +170,20 @@ export class PahPluginService extends BaseService {
           dictionaryFingerprint ?? ''
         )
       : null;
-    await this.applyNavigationContributions(info);
+    const restoreActivation =
+      this.pahPluginRuntimeActivationService.activate(info);
     try {
+      await this.applyNavigationContributions(info);
       return {
         ...(await this.transition(info, 'enabled')),
         dictionaryReconcile,
       };
     } catch (error) {
-      await this.removeNavigationContributions(moduleId, false);
+      try {
+        await this.removeNavigationContributions(moduleId, false);
+      } finally {
+        restoreActivation();
+      }
       throw error;
     }
   }
@@ -182,8 +192,18 @@ export class PahPluginService extends BaseService {
     this.requireHostAdmin();
     const info = await this.getRequired(moduleId);
     this.requireTransition(info, 'disabled');
-    const restoreBranding =
-      await this.pahPublicLoginBrandingService.deactivateForLifecycle(moduleId);
+    const restoreActivation =
+      this.pahPluginRuntimeActivationService.deactivate(moduleId);
+    let restoreBranding: () => Promise<void>;
+    try {
+      restoreBranding =
+        await this.pahPublicLoginBrandingService.deactivateForLifecycle(
+          moduleId
+        );
+    } catch (error) {
+      restoreActivation();
+      throw error;
+    }
     try {
       await this.removeNavigationContributions(moduleId, true);
       return await this.transition(info, 'disabled');
@@ -191,7 +211,11 @@ export class PahPluginService extends BaseService {
       try {
         await this.applyNavigationContributions(info);
       } finally {
-        await restoreBranding();
+        try {
+          await restoreBranding();
+        } finally {
+          restoreActivation();
+        }
       }
       throw error;
     }
@@ -203,8 +227,18 @@ export class PahPluginService extends BaseService {
     if (info.state === 'enabled') {
       throw new CoolCommException('卸载前必须先停用插件');
     }
-    const restoreBranding =
-      await this.pahPublicLoginBrandingService.deactivateForLifecycle(moduleId);
+    const restoreActivation =
+      this.pahPluginRuntimeActivationService.remove(moduleId);
+    let restoreBranding: () => Promise<void>;
+    try {
+      restoreBranding =
+        await this.pahPublicLoginBrandingService.deactivateForLifecycle(
+          moduleId
+        );
+    } catch (error) {
+      restoreActivation();
+      throw error;
+    }
     let next: PahPluginInstallationEntity;
     try {
       next = await this.transition(info, 'uninstalled', {
@@ -212,7 +246,11 @@ export class PahPluginService extends BaseService {
         ...(backupId?.trim() ? { lastBackupId: backupId.trim() } : {}),
       });
     } catch (error) {
-      await restoreBranding();
+      try {
+        await restoreBranding();
+      } finally {
+        restoreActivation();
+      }
       throw error;
     }
     return {
@@ -231,9 +269,16 @@ export class PahPluginService extends BaseService {
         `只有已验证且尚未安装的插件包可以清理，当前状态：${info.state}`
       );
     }
-    return this.transition(info, 'uninstalled', {
-      dataRetained: true,
-    });
+    const restoreActivation =
+      this.pahPluginRuntimeActivationService.remove(moduleId);
+    try {
+      return await this.transition(info, 'uninstalled', {
+        dataRetained: true,
+      });
+    } catch (error) {
+      restoreActivation();
+      throw error;
+    }
   }
 
   async enabled() {

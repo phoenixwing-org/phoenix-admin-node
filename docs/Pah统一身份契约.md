@@ -179,11 +179,14 @@ OAuth code、ticket、验证码、密码和 refresh token 在 Base 请求日志�
 
 | Method | URL                                            | 用途                   |
 | ------ | ---------------------------------------------- | ---------------------- |
-| `GET`  | `/admin/pah/identity/bind-request/list`        | 查询待审查记录         |
-| `POST` | `/admin/pah/identity/bind-request/bind`        | 绑定已有后台用户       |
-| `POST` | `/admin/pah/identity/bind-request/reject`      | 拒绝绑定申请           |
-| `GET`  | `/admin/pah/identity/external-identity/list`   | 查询用户外部身份       |
-| `POST` | `/admin/pah/identity/external-identity/unlink` | 管理员解除外部身份绑定 |
+| `GET`  | `/admin/phoenix/identity/bind-request/list`        | 查询待审查记录         |
+| `POST` | `/admin/phoenix/identity/bind-request/bind`        | 绑定已有后台用户       |
+| `POST` | `/admin/phoenix/identity/bind-request/reject`      | 拒绝绑定申请           |
+| `GET`  | `/admin/phoenix/identity/external-identity/list`   | 查询用户外部身份       |
+| `POST` | `/admin/phoenix/identity/external-identity/unlink` | 管理员解除外部身份绑定 |
+
+旧 `/admin/pah/identity/*` 仅由轻量兼容 Controller 转发到同一 service；新调用方和文档示例
+必须使用 `/admin/phoenix/identity/*`。
 
 普通用户若需要查看或解除自己的身份，另提供 `self` 资源接口；不得允许自助绑定未审查
 provider，也不得复用管理员 capability。

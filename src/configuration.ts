@@ -38,7 +38,10 @@ const runtimeEntityGenerator = path.join(
   'scripts',
   'pah-sync-runtime-entities.cjs'
 );
-if (existsSync(runtimeEntityGenerator)) {
+if (
+  existsSync(runtimeEntityGenerator) &&
+  process.env.PAH_RUNTIME_ENTITIES_PREPARED !== 'true'
+) {
   execFileSync(
     process.execPath,
     [

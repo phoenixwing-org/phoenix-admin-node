@@ -1,5 +1,5 @@
 import {
-  PahPublicLoginBrandingUiContributionsV1,
+  PahPublicLoginBrandingUiContributions,
   validatePahPublicLoginBrandingContributions,
 } from './public-login-branding';
 
@@ -152,7 +152,7 @@ export interface PahPluginManifest {
   healthChecks: Array<{ id: string; path: string }>;
   hostReuse: PahHostReuseCapability[];
   /** Host validates login/brand; post-login home remains a normal route contribution. */
-  uiContributions?: PahPublicLoginBrandingUiContributionsV1;
+  uiContributions?: PahPublicLoginBrandingUiContributions;
   dataOwnership: {
     tables: string[];
     retainedOnUninstall: boolean;

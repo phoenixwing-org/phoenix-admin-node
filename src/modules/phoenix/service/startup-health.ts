@@ -22,6 +22,10 @@ import {
   validatePhoenixPluginManifest,
 } from '../interface/plugin';
 import { PahPublicLoginBrandingService } from './public-login-branding';
+import {
+  inspectPahPluginActivation,
+  pahPluginManifestSha256,
+} from './runtime-activation';
 
 const MODULE_ID_PATTERN = /^[a-z][a-z0-9-]{1,63}$/;
 const COMMIT_PATTERN = /^[a-f0-9]{40}$/;
@@ -58,6 +62,8 @@ export interface PhoenixPluginStartupItem {
   sourceIdentitySha256?: string;
   webSource?: string;
   nodeSource: string;
+  activationVersion?: string;
+  activationManifestSha256?: string;
 }
 
 export interface PhoenixPluginStartupInspection {
@@ -365,18 +371,34 @@ export function inspectPhoenixPluginModules(
         if (stat.isSymbolicLink()) {
           plugins.push(developmentItem(moduleId, modulePath));
         } else if (stat.isDirectory()) {
-          const config = ['config.ts', 'config.js'].find(name =>
-            existsSync(path.join(modulePath, name))
-          );
-          plugins.push({
+          const activation = inspectPahPluginActivation(
+            hostRoot,
             moduleId,
-            origin: 'release',
-            state: 'quarantined',
-            detail: config
-              ? '正式 payload 缺少 detector 前可验证的 Host 激活收据，已隔离'
-              : '正式 payload 缺少 config.ts/config.js，已隔离',
-            nodeSource: modulePath,
-          });
+            'node',
+            modulePath
+          );
+          if ('detail' in activation) {
+            plugins.push({
+              moduleId,
+              origin: 'release',
+              state: 'quarantined',
+              detail: `${activation.detail}，已隔离`,
+              nodeSource: modulePath,
+            });
+          } else {
+            plugins.push({
+              moduleId,
+              origin: 'release',
+              state: 'ready',
+              detail: `Host 激活收据已验证：${activation.receipt.version}`,
+              ...(activation.receipt.pluginType
+                ? { pluginType: activation.receipt.pluginType }
+                : {}),
+              activationVersion: activation.receipt.version,
+              activationManifestSha256: activation.receipt.manifestSha256,
+              nodeSource: modulePath,
+            });
+          }
         }
       } catch {
         plugins.push({
@@ -498,6 +520,15 @@ export class PhoenixPluginStartupHealthService {
           item.detail = '正式安装记录的 manifest 无效或身份不匹配';
           continue;
         }
+        if (
+          item.activationVersion !== installation.version ||
+          item.activationManifestSha256 !==
+            pahPluginManifestSha256(installation.manifest)
+        ) {
+          item.state = 'quarantined';
+          item.detail = 'Host 激活收据与当前安装记录不匹配';
+          continue;
+        }
         item.pluginType = installation.manifest.pluginType;
         item.manifest = installation.manifest;
         if (installation.state !== 'enabled') {
@@ -528,8 +559,8 @@ export class PhoenixPluginStartupHealthService {
             installation
           );
         }
-        item.state = 'action-required';
-        item.detail = `安装记录与迁移台账 ${installation.manifest.migrations.length}/${installation.manifest.migrations.length} 已就绪；仍缺 detector 前 Host 激活收据，插件保持隔离`;
+        item.state = 'ready';
+        item.detail = `Host 激活收据、安装记录与迁移台账 ${installation.manifest.migrations.length}/${installation.manifest.migrations.length} 已就绪`;
       } catch {
         item.state = 'quarantined';
         item.detail = '正式插件快速健康检查失败，Host 继续运行';

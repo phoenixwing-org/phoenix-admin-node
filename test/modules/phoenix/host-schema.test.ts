@@ -18,7 +18,7 @@ describe('Pah Host schema 制品', () => {
       expect.objectContaining({
         formatVersion: 1,
         schemaId: 'pah-host',
-        version: 3,
+        version: 4,
       })
     );
     expect(descriptor.migrations.map(item => item.path).sort()).toEqual(
@@ -30,6 +30,24 @@ describe('Pah Host schema 制品', () => {
         `sha256:${createHash('sha256').update(content).digest('hex')}`
       );
     }
+  });
+
+  it('字典菜单入口迁移只改写旧路径并可重复执行', () => {
+    const sql = readFileSync(
+      path.join(pahRoot, 'schema/0004-dictionary-menu-route.sql'),
+      'utf8'
+    );
+
+    expect(sql).toContain("router = '/pah/dictionary-maintenance'");
+    expect(sql).toContain("THEN '/phoenix/dictionary-maintenance'");
+    expect(sql).toContain(
+      "\"viewPath\" = 'modules/pah/views/dictionary-maintenance.vue'"
+    );
+    expect(sql).toContain(
+      "THEN 'modules/phoenix/views/dictionary-maintenance.vue'"
+    );
+    expect(sql).toContain('legacy dictionary menu route remains after migration');
+    expect(sql).not.toMatch(/DELETE\s+FROM\s+base_sys_menu/i);
   });
 
   it('外部身份迁移只保存身份映射和一次性凭证哈希', () => {

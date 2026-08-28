@@ -7,7 +7,6 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
-  realpathSync,
   renameSync,
   rmSync,
   writeFileSync,
@@ -21,6 +20,10 @@ import {
 import { PahLocalPluginBackupService } from './local-backup';
 import { PahPluginService } from './plugin';
 import { PahPublicLoginBrandingService } from './public-login-branding';
+import { PahPluginRuntimeActivationService } from './runtime-activation';
+import { resolvePahHostRoots } from './runtime-host';
+
+export { resolvePahHostRoots } from './runtime-host';
 
 const PHOENIX_PACKAGE_SUFFIX = '.phoenix.cool';
 const MAX_PACKAGE_BYTES = 100 * 1024 * 1024;
@@ -121,32 +124,6 @@ function assertOrdinaryZipEntry(entry: any) {
   if ((unixMode & 0o170000) === 0o120000) {
     throw new CoolCommException(`插件包不得包含符号链接：${entry.entryName}`);
   }
-}
-
-function resolveHostRoots() {
-  const nodeRoot = realpathSync(
-    path.resolve(process.env.PHOENIX_ADMIN_NODE_ROOT || process.cwd())
-  );
-  const vueRoot = realpathSync(
-    path.resolve(
-      process.env.PHOENIX_ADMIN_VUE_ROOT || path.join(nodeRoot, '../vue')
-    )
-  );
-  const nodePackage = JSON.parse(
-    readFileSync(path.join(nodeRoot, 'package.json'), 'utf8')
-  );
-  const vuePackage = JSON.parse(
-    readFileSync(path.join(vueRoot, 'package.json'), 'utf8')
-  );
-  if (
-    nodePackage.name !== 'phoenix-admin-node' ||
-    vuePackage.name !== 'phoenix-admin-vue'
-  ) {
-    throw new CoolCommException(
-      '未找到成对的 Phoenix Admin Node/Vue 本地 Host'
-    );
-  }
-  return { nodeRoot, vueRoot };
 }
 
 function requireSafeModuleId(moduleId: string) {
@@ -258,7 +235,7 @@ function archiveLocalPayloads(
   operation: 'discard' | 'uninstall'
 ) {
   requireSafeModuleId(moduleId);
-  const roots = resolveHostRoots();
+  const roots = resolvePahHostRoots();
   const operationId = randomUUID();
   const moved: ArchivedHostPayload[] = [];
   try {
@@ -447,6 +424,9 @@ export class PahPluginPackageService extends BaseService {
   @Inject()
   pahPublicLoginBrandingService: PahPublicLoginBrandingService;
 
+  @Inject()
+  pahPluginRuntimeActivationService: PahPluginRuntimeActivationService;
+
   @Logger()
   logger: ILogger;
 
@@ -520,12 +500,19 @@ export class PahPluginPackageService extends BaseService {
       );
     }
     const moved = archiveLocalPayloads(info.moduleId, 'uninstall');
-    const { nodeRoot } = resolveHostRoots();
+    const { nodeRoot } = resolvePahHostRoots();
+    let restoreBrandingReceipts = () => undefined;
     let installation;
     try {
+      restoreBrandingReceipts =
+        this.pahPublicLoginBrandingService?.removeVerifiedPackageReceiptsForLifecycle(
+          info.moduleId,
+          info.version
+        ) || restoreBrandingReceipts;
       syncHostRuntimeEntities(nodeRoot);
       installation = await this.pahPluginService.uninstall(info.moduleId);
     } catch (error) {
+      restoreBrandingReceipts();
       restoreArchivedPayloadsAndEntities(moved, nodeRoot, error);
     }
     const removedPayloads = moved.map(item => item.runtime);
@@ -568,8 +555,14 @@ export class PahPluginPackageService extends BaseService {
       );
     }
     const moved = archiveLocalPayloads(info.moduleId, 'discard');
-    const { nodeRoot } = resolveHostRoots();
+    const { nodeRoot } = resolvePahHostRoots();
+    let restoreBrandingReceipts = () => undefined;
     try {
+      restoreBrandingReceipts =
+        this.pahPublicLoginBrandingService?.removeVerifiedPackageReceiptsForLifecycle(
+          info.moduleId,
+          info.version
+        ) || restoreBrandingReceipts;
       syncHostRuntimeEntities(nodeRoot);
       const installation = await this.pahPluginService.discardVerifiedPackage(
         info.moduleId
@@ -598,6 +591,7 @@ export class PahPluginPackageService extends BaseService {
         installation,
       };
     } catch (error) {
+      restoreBrandingReceipts();
       restoreArchivedPayloadsAndEntities(moved, nodeRoot, error);
     }
   }
@@ -843,7 +837,7 @@ export class PahPluginPackageService extends BaseService {
       detail: '两个运行时入口和安装映射完整',
     });
     progress.current = 'Host 装配与登记';
-    const { nodeRoot, vueRoot } = resolveHostRoots();
+    const { nodeRoot, vueRoot } = resolvePahHostRoots();
     const roots = { node: nodeRoot, vue: vueRoot };
     const staged: Array<{
       temporary: string;
@@ -906,7 +900,13 @@ export class PahPluginPackageService extends BaseService {
     }
 
     let brandingReceiptCreated = false;
+    let restoreActivationCandidate: (() => void) | null = null;
     try {
+      restoreActivationCandidate =
+        this.pahPluginRuntimeActivationService.recordVerifiedPackage(
+          manifest,
+          packageSha256
+        ).rollback;
       syncHostRuntimeEntities(nodeRoot);
       const brandingReceipt =
         this.pahPublicLoginBrandingService.recordVerifiedPackage(
@@ -939,6 +939,7 @@ export class PahPluginPackageService extends BaseService {
         installation,
       };
     } catch (error) {
+      restoreActivationCandidate?.();
       if (brandingReceiptCreated) {
         this.pahPublicLoginBrandingService.removeVerifiedPackageReceipt(
           manifest.moduleId,

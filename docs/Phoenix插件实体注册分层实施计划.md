@@ -1,6 +1,6 @@
 # Phoenix 插件实体注册分层实施计划
 
-状态：阶段 A/B/C/D 已实现，等待真实 Branding/Open Issue 联合复验
+状态：阶段 A/B/C/D 与正式激活收据已实现，正在执行干净安装生命周期复验
 
 日期：2026-08-12
 
@@ -27,7 +27,15 @@ Phoenix Admin 曾沿用 Cool 的 `cool entity`：扫描 `src/modules/*/entity/**
 src/entities.ts          # tracked：Host 固定实体 + pluginEntities
 src/entities.plugin.ts   # ignored：当前插件实体，自动生成
 scripts/pah-sync-runtime-entities.cjs
+.runtime/phoenix-plugin-activation/candidates/<moduleId>.json
+.runtime/phoenix-plugin-activation/receipts/<moduleId>.json
 ```
+
+`candidates` 是验包阶段由 Host 生成的候选收据，绑定 package SHA-256、canonical manifest SHA-256
+以及 Node/Vue 两端逐文件聚合哈希；它不会激活插件。只有管理员完成安装并执行启用时，Host 才会在重新
+核验当前 payload 字节后把同一候选原子提升为 `receipts`。Node 实体生成器、Node 启动健康检查和 Vue
+Vite 启动点检分别验证本端 payload 与活动收据；缺失、双端候选不一致、版本/manifest 不匹配或任意
+文件变化都只隔离目标插件。
 
 固定入口只追加生成层：
 
@@ -104,14 +112,17 @@ Function 有效，则生成物只出现 Function 路径；若两者都无效，�
 
 1. 在 staging 目录装配候选 Node/Vue payload；
 2. 校验 manifest、descriptor、package SHA、实体路径与 moduleId 边界；
-3. 在临时文件中重建 `entities.plugin.ts`；
-4. 运行 TypeScript、实体闭包、重复类名/表名及禁止跨插件 import 检查；
-5. 原子切换 payload 与生成文件；
-6. 由 Host supervisor 受控重启 Node；
-7. 健康检查失败时原子恢复上一组 payload、收据和聚合文件并再次启动；
-8. DB migration/ledger 仍遵守独立的版本化迁移契约，不由实体发现代替。
+3. 原子切换 payload，并在 Node/Vue Host 各写一份未激活候选收据；
+4. 未启用的普通目录保持隔离，在临时文件中重建纯 Host `entities.plugin.ts`；
+5. 安装与 DDL 台账完成后，启用操作重新核验双端候选、manifest 与当前 payload，再原子写活动收据；
+6. 运行 TypeScript、实体闭包、重复类名/表名及禁止跨插件 import 检查；
+7. 由 Host supervisor 受控重启 Node/Web，二者只消费匹配的活动收据；
+8. 健康检查失败时原子恢复上一组 payload、候选/活动收据和聚合文件并再次启动；
+9. DB migration/ledger 仍遵守独立的版本化迁移契约，不由实体发现代替。
 
-停用与卸载同样先在 staging 中移除目标插件，再重建并校验；不得先删除目录、后异步尝试清单更新。
+停用先撤销活动收据并移除 contribution，生命周期提交失败时恢复原收据；卸载再删除候选收据、
+同版本公开品牌验包收据和 Node/Vue payload，然后重建并校验。公开品牌的内容哈希资源可作为无害缓存
+保留，但不得留下“数据库已启用但无收据”“已卸载但收据仍激活”或“卸载后同版本收据不唯一”的状态。
 
 ## 分步试水
 
@@ -183,6 +194,8 @@ Function 有效，则生成物只出现 Function 路径；若两者都无效，�
 - Open Issue + Branding 双挂载启动正常，卸载任一后剩余插件正常；
 - 全部卸载后 Node 冷启动、登录、EPS、字典和验证码正常；
 - 任一失败点都能恢复到上一可启动状态；
+- 验包后的 payload 在启用前发生任意字节变化时拒绝生成活动收据；
+- 候选收据不会被 Node/Vue detector 当成已启用，只有双端匹配的活动收据可以开放模块；
 - 被隔离插件即使曾留下 dist descriptor/SQL，也不会被 Cool 再识别为可启动模块；
 - 生产环境保持 `synchronize=false`，实体发现不得触发或替代 DDL。
 

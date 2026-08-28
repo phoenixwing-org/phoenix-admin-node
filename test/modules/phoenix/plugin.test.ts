@@ -520,6 +520,9 @@ describe('Pah 菜单与角色贡献', () => {
           .fn()
           .mockResolvedValue(async () => undefined),
       },
+      pahPluginRuntimeActivationService: {
+        deactivate: jest.fn().mockReturnValue(() => undefined),
+      },
     });
 
     await service.disable(MODULE_ID);
@@ -583,6 +586,9 @@ describe('Pah 菜单与角色贡献', () => {
       },
       baseSysPermsService: { refreshPerms: jest.fn() },
       pahNavigationService: { ensurePluginDefaultGroup },
+      pahPluginRuntimeActivationService: {
+        activate: jest.fn().mockReturnValue(() => undefined),
+      },
     });
 
     await service.enable(MODULE_ID);

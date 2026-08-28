@@ -1,4 +1,13 @@
-import { Body, Files, Get, Inject, Post, Provide, Query } from '@midwayjs/core';
+import {
+  Body,
+  Fields,
+  Files,
+  Get,
+  Inject,
+  Post,
+  Provide,
+  Query,
+} from '@midwayjs/core';
 import { BaseController, CoolController } from '@cool-midway/core';
 import { PahPluginInstallationEntity } from '../../entity/plugin';
 import { PahPluginManifest } from '../../interface/plugin';
@@ -58,6 +67,45 @@ export class PahPluginController extends BaseController {
   ) {
     return this.ok(
       await this.pahPublicLoginBrandingService.reset(expectedRevision)
+    );
+  }
+
+  @Get('/workbench-branding/status', {
+    summary: '查询 Host 默认工作台品牌配置',
+  })
+  async workbenchBrandingStatus() {
+    return this.ok(
+      await this.pahPublicLoginBrandingService.hostWorkbenchBrandingStatus()
+    );
+  }
+
+  @Post('/workbench-branding/save', {
+    summary: '保存 Host 默认工作台品牌配置',
+  })
+  async saveWorkbenchBranding(@Files() files, @Fields() fields) {
+    return this.ok(
+      await this.pahPublicLoginBrandingService.saveHostWorkbenchBranding(
+        {
+          title: fields?.title,
+          subtitleMode: fields?.subtitleMode,
+          subtitleText: fields?.subtitleText,
+          expectedRevision: fields?.expectedRevision,
+        },
+        files?.[0]
+      )
+    );
+  }
+
+  @Post('/workbench-branding/reset', {
+    summary: '恢复 Host 内置工作台品牌配置',
+  })
+  async resetWorkbenchBranding(
+    @Body('expectedRevision') expectedRevision: string
+  ) {
+    return this.ok(
+      await this.pahPublicLoginBrandingService.resetHostWorkbenchBranding(
+        expectedRevision
+      )
     );
   }
 

@@ -3,6 +3,9 @@
 > 状态（2026-08-27）：本文以下内容是迁移前的风险评估与冻结证据。方案 A 已在独立
 > worktree 实施；当前目录、兼容入口和业务插件适配要求以
 > [Phoenix Host 目录迁移实施说明](./PhoenixHost目录迁移实施说明.md) 为准。
+>
+> 2026-08-28 补充：字典旧深链已退出兼容面。Host schema v4 和系统维护中心会把数据库菜单
+> 等幂迁移到 `/phoenix/dictionary-maintenance`；以下“字典深链兼容”仅是迁移前风险记录。
 
 ## 结论
 
@@ -81,9 +84,9 @@ API 已经是 `/admin/phoenix/plugin`。因此当前没有为了品牌展示而�
 - Node/Vue 内部 import path 和测试 fixture 名；
 - 文档标题、注释和开发脚本文件名。
 
-Node 的 `src/modules/pah/service/public-login-branding.ts` 与 Vue 的
-`src/pah/PahPublicLoginBranding.ts` 属于这一层的实现文件；文件可移动，但快照 wire contract 不能
-随物理路径一起静默改变。
+Node 的 `src/modules/phoenix/service/public-login-branding.ts` 与 Vue 的
+`src/phoenix/PahPublicLoginBranding.ts` 属于这一层的实现文件；`Pah*` 类型名可以作为稳定契约继续
+保留，但快照 wire contract 不能随物理路径一起静默改变。
 
 ### 已发布或持久化的兼容标识
 
@@ -101,23 +104,17 @@ Node 的 `src/modules/pah/service/public-login-branding.ts` 与 Vue 的
 | `pah.*` storage keys                                              | 浏览器工作台偏好                                 | 旧键只读迁移，禁止直接丢失设置 |
 | `/@/pah/*`、`/$/pah/*`                                            | 产品插件的 Host adapter import                   | 保留 alias 或兼容 facade       |
 | `/admin/pah/identity`、`/admin/pah/navigation`                    | 当前 Vue 与外部身份/导航 API                     | 保留兼容入口                   |
-| `/pah/identity`、`/pah/navigation`、`/pah/dictionary-maintenance` | 当前 Host 页面、菜单或深链                       | 保留 redirect/alias            |
+| `/pah/identity`、`/pah/navigation`                               | 当前 Host 页面、菜单或深链                       | 暂时保留定向 redirect/alias     |
+| `/pah/dictionary-maintenance`                                    | 旧字典菜单或历史深链                             | 不保留兼容；由维护中心等幂迁移 |
 
 已经规范化的 `/phoenix/plugins` 和 `/admin/phoenix/plugin` 保持不变，不再引入第二套插件管理
 真源。产品自己的 `/admin/phoenix-<moduleId>/*` API 也不受 Host 内部命名迁移影响。
 
-## 现存的独立契约错位
+## 已收口的独立契约错位
 
-Dev Hub `src/server/api.ts` 当前仍请求：
-
-- `/admin/pah/plugin/list`；
-- `/admin/pah/plugin/migration-plan?moduleId=...`。
-
-当前 Admin Node 的插件控制器已经显式锁定 `/admin/phoenix/plugin`，而且 Admin Vue 测试明确拒绝
-`/admin/pah/plugin` 兼容入口。这是现存的 Dev Hub 与 Host 契约错位，不是目录改名造成的。
-
-应在独立提交中把 Dev Hub 改为 `/admin/phoenix/plugin/*`，补成功、401/403 和错误响应测试。不要
-为了兼容这个陈旧调用而重新开放 `/admin/pah/plugin`，也不要把该修复混入目录重命名。
+Dev Hub `src/server/api.ts` 已统一请求 `/admin/phoenix/plugin/list` 与
+`/admin/phoenix/plugin/migration-plan`，并有测试拒绝 `/admin/pah/plugin`。Host 不重新开放旧插件
+管理 API；后续路径审计应持续把这一点作为回归门禁。
 
 ## 方案 A：只改物理目录，稳定标识不变
 

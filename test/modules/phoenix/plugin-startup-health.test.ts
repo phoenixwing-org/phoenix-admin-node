@@ -15,6 +15,10 @@ import {
   inspectPhoenixPluginModules,
   PhoenixPluginStartupHealthService,
 } from '../../../src/modules/phoenix/service/startup-health';
+import {
+  pahPluginManifestSha256,
+  pahPluginRuntimeDigest,
+} from '../../../src/modules/phoenix/service/runtime-activation';
 
 function sha256(value: Buffer | string) {
   return createHash('sha256').update(value).digest('hex');
@@ -95,6 +99,34 @@ function manifest(moduleId: string, options: { branding?: boolean } = {}) {
       purgeCapability: `${moduleId}:data:purge`,
     },
   };
+}
+
+function writeActivationReceipt(
+  hostRoot: string,
+  moduleId: string,
+  moduleRoot: string,
+  value: ReturnType<typeof manifest>
+) {
+  const digest = pahPluginRuntimeDigest(moduleRoot);
+  const directory = path.join(
+    hostRoot,
+    '.runtime',
+    'phoenix-plugin-activation',
+    'receipts'
+  );
+  mkdirSync(directory, { recursive: true });
+  writeFileSync(
+    path.join(directory, `${moduleId}.json`),
+    JSON.stringify({
+      formatVersion: 1,
+      moduleId,
+      version: value.version,
+      pluginType: value.pluginType ?? null,
+      packageSha256: 'a'.repeat(64),
+      manifestSha256: pahPluginManifestSha256(value as any),
+      payloads: { node: digest, vue: digest },
+    })
+  );
 }
 
 interface Fixture {
@@ -397,7 +429,7 @@ describe('Phoenix 插件启动健康检查', () => {
     ]);
   });
 
-  it('普通目录不会先被 detector 导入，DB/ledger 正常也只报告 action-required', async () => {
+  it('正式目录只有匹配 Host 激活收据、DB 与 ledger 时才进入 ready', async () => {
     const root = mkdtempSync(path.join(tmpdir(), 'phoenix-plugin-health-release-'));
     roots.push(root);
     mkdirSync(path.join(root, 'src', 'modules', 'broken-plugin'), {
@@ -412,11 +444,19 @@ describe('Phoenix 插件启动健康检查', () => {
         'module.exports = () => ({});'
       );
     }
+    const readyManifest = manifest('ready-plugin');
+    writeActivationReceipt(
+      root,
+      'ready-plugin',
+      path.join(root, 'src', 'modules', 'ready-plugin'),
+      readyManifest
+    );
     const installations = {
       'ready-plugin': {
         moduleId: 'ready-plugin',
         state: 'enabled',
-        manifest: manifest('ready-plugin'),
+        version: readyManifest.version,
+        manifest: readyManifest,
       },
     } as const;
     const service = new PhoenixPluginStartupHealthService();
@@ -441,15 +481,14 @@ describe('Phoenix 插件启动健康检查', () => {
         }),
         expect.objectContaining({
           moduleId: 'ready-plugin',
-          state: 'action-required',
-          detail: expect.stringContaining('仍缺 detector 前 Host 激活收据'),
+          state: 'ready',
+          detail: expect.stringContaining('激活收据、安装记录与迁移台账'),
         }),
       ])
     );
     const beforeReady = inspectPhoenixPluginModules(root);
     expect(beforeReady.ignoredDetectorPatterns).toEqual([
       '**/modules/broken-plugin/**',
-      '**/modules/ready-plugin/**',
     ]);
   });
 });

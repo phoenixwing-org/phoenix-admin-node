@@ -1,6 +1,6 @@
 import { createHash } from 'crypto';
 
-export const PAH_PUBLIC_LOGIN_BRANDING_SCHEMA_VERSION = 1 as const;
+export const PAH_PUBLIC_LOGIN_BRANDING_SCHEMA_VERSION = 2 as const;
 export const PAH_PUBLIC_LOGIN_BRANDING_PRESENTATIONS = [
   'split',
   'centered',
@@ -62,6 +62,22 @@ export interface PahPublicLoginBrandingUiContributionsV1 {
   home?: unknown;
 }
 
+export interface PahWorkbenchBrandingContributionV2 {
+  title: string;
+  subtitle: { mode: 'web-origin' } | { mode: 'text'; text: string };
+  logoVariant: 'compact';
+}
+
+export interface PahPublicLoginBrandingUiContributionsV2
+  extends Omit<PahPublicLoginBrandingUiContributionsV1, 'contractVersion'> {
+  contractVersion: 2;
+  workbench: PahWorkbenchBrandingContributionV2;
+}
+
+export type PahPublicLoginBrandingUiContributions =
+  | PahPublicLoginBrandingUiContributionsV1
+  | PahPublicLoginBrandingUiContributionsV2;
+
 export interface PahPublicLoginBrandingSnapshotAssetV1 {
   /** Host wrapper 会把相对路径解析到当前同源公开快照 endpoint。 */
   url: string;
@@ -97,6 +113,21 @@ export interface PahPublicLoginBrandingSnapshotV1 {
     background?: PahPublicLoginBrandingSnapshotAssetV1;
   };
 }
+
+export interface PahPublicLoginBrandingSnapshotV2
+  extends Omit<PahPublicLoginBrandingSnapshotV1, 'schemaVersion'> {
+  schemaVersion: 2;
+  workbench: {
+    title: string;
+    subtitle: { mode: 'web-origin' } | { mode: 'text'; text: string };
+    logo: PahPublicLoginBrandingSnapshotAssetV1;
+    logoDark: PahPublicLoginBrandingSnapshotAssetV1;
+  };
+}
+
+export type PahPublicLoginBrandingSnapshot =
+  | PahPublicLoginBrandingSnapshotV1
+  | PahPublicLoginBrandingSnapshotV2;
 
 const ASSET_KEYS = [
   'favicon',
@@ -194,7 +225,7 @@ export function validatePahPublicLoginBrandingContributions(
   }
   exactKeys(
     input,
-    ['contractVersion', 'login', 'brand', 'home'],
+    ['contractVersion', 'login', 'brand', 'home', 'workbench'],
     'uiContributions',
     errors
   );
@@ -203,8 +234,9 @@ export function validatePahPublicLoginBrandingContributions(
   if (pluginType !== 'phoenix.admin.branding') {
     errors.push('公开登录品牌贡献只允许 phoenix.admin.branding 插件声明');
   }
-  if (input.contractVersion !== 1)
-    errors.push('uiContributions.contractVersion 必须为 1');
+  if (![1, 2].includes(Number(input.contractVersion))) {
+    errors.push('uiContributions.contractVersion 必须为 1 或 2');
+  }
 
   if (!isRecord(input.login)) {
     errors.push('uiContributions.login 必须是对象');
@@ -280,6 +312,51 @@ export function validatePahPublicLoginBrandingContributions(
     }
   }
 
+  if (input.contractVersion === 2) {
+    if (!isRecord(input.workbench)) {
+      errors.push('uiContributions.workbench 必须是对象');
+    } else {
+      exactKeys(
+        input.workbench,
+        ['title', 'subtitle', 'logoVariant'],
+        'uiContributions.workbench',
+        errors
+      );
+      if (!isPlainPublicText(input.workbench.title, 80)) {
+        errors.push('uiContributions.workbench.title 必须是安全公开文本');
+      }
+      if (input.workbench.logoVariant !== 'compact') {
+        errors.push('uiContributions.workbench.logoVariant 首版只支持 compact');
+      }
+      if (!isRecord(input.workbench.subtitle)) {
+        errors.push('uiContributions.workbench.subtitle 必须是对象');
+      } else if (input.workbench.subtitle.mode === 'web-origin') {
+        exactKeys(
+          input.workbench.subtitle,
+          ['mode'],
+          'uiContributions.workbench.subtitle',
+          errors
+        );
+      } else if (input.workbench.subtitle.mode === 'text') {
+        exactKeys(
+          input.workbench.subtitle,
+          ['mode', 'text'],
+          'uiContributions.workbench.subtitle',
+          errors
+        );
+        if (!isPlainPublicText(input.workbench.subtitle.text, 160)) {
+          errors.push(
+            'uiContributions.workbench.subtitle.text 必须是安全公开文本'
+          );
+        }
+      } else {
+        errors.push('uiContributions.workbench.subtitle.mode 不受支持');
+      }
+    }
+  } else if (input.workbench !== undefined) {
+    errors.push('uiContributions.workbench 需要 contractVersion=2');
+  }
+
   return { valid: errors.length === 0, errors };
 }
 
@@ -294,22 +371,22 @@ function canonicalValue(value: unknown): unknown {
 }
 
 export function pahPublicLoginBrandingRevision(
-  snapshot: Omit<PahPublicLoginBrandingSnapshotV1, 'revision'>
+  snapshot: Omit<PahPublicLoginBrandingSnapshot, 'revision'>
 ) {
   return createHash('sha256')
     .update(JSON.stringify(canonicalValue(snapshot)))
     .digest('hex');
 }
 
-export function withPahPublicLoginBrandingRevision(
-  snapshot: Omit<PahPublicLoginBrandingSnapshotV1, 'revision'>
-): PahPublicLoginBrandingSnapshotV1 {
+export function withPahPublicLoginBrandingRevision<
+  T extends Omit<PahPublicLoginBrandingSnapshot, 'revision'>
+>(snapshot: T): T & { revision: string } {
   return { ...snapshot, revision: pahPublicLoginBrandingRevision(snapshot) };
 }
 
 export function validatePahPublicLoginBrandingSnapshot(
   value: unknown
-): value is PahPublicLoginBrandingSnapshotV1 {
+): value is PahPublicLoginBrandingSnapshot {
   if (!isRecord(value)) return false;
   const validSnapshotAsset = (asset: unknown) => {
     if (!isRecord(asset)) return false;
@@ -344,7 +421,9 @@ export function validatePahPublicLoginBrandingSnapshot(
     );
   };
   if (
-    value.schemaVersion !== PAH_PUBLIC_LOGIN_BRANDING_SCHEMA_VERSION ||
+    ![1, PAH_PUBLIC_LOGIN_BRANDING_SCHEMA_VERSION].includes(
+      Number(value.schemaVersion)
+    ) ||
     typeof value.revision !== 'string' ||
     !/^[a-f0-9]{64}$/.test(value.revision) ||
     !['host-default', 'plugin'].includes(String(value.mode)) ||
@@ -369,6 +448,7 @@ export function validatePahPublicLoginBrandingSnapshot(
           'favicon',
           'login',
           'assets',
+          'workbench',
         ].includes(key)
     ) ||
     !validSnapshotAsset(value.favicon) ||
@@ -404,6 +484,38 @@ export function validatePahPublicLoginBrandingSnapshot(
   ) {
     return false;
   }
+  if (value.schemaVersion === 2) {
+    if (!isRecord(value.workbench)) return false;
+    if (
+      Object.keys(value.workbench).some(
+        key => !['title', 'subtitle', 'logo', 'logoDark'].includes(key)
+      ) ||
+      !isPlainPublicText(value.workbench.title, 80) ||
+      !isRecord(value.workbench.subtitle) ||
+      !validSnapshotAsset(value.workbench.logo) ||
+      !validSnapshotAsset(value.workbench.logoDark)
+    ) {
+      return false;
+    }
+    if (value.workbench.subtitle.mode === 'web-origin') {
+      if (Object.keys(value.workbench.subtitle).some(key => key !== 'mode')) {
+        return false;
+      }
+    } else if (value.workbench.subtitle.mode === 'text') {
+      if (
+        Object.keys(value.workbench.subtitle).some(
+          key => !['mode', 'text'].includes(key)
+        ) ||
+        !isPlainPublicText(value.workbench.subtitle.text, 160)
+      ) {
+        return false;
+      }
+    } else {
+      return false;
+    }
+  } else if (value.workbench !== undefined) {
+    return false;
+  }
   if (value.mode === 'host-default' && value.plugin !== null) return false;
   if (value.mode === 'plugin') {
     if (!isRecord(value.plugin)) return false;
@@ -420,7 +532,7 @@ export function validatePahPublicLoginBrandingSnapshot(
       return false;
     }
   }
-  const candidate = value as unknown as PahPublicLoginBrandingSnapshotV1;
+  const candidate = value as unknown as PahPublicLoginBrandingSnapshot;
   const { revision, ...withoutRevision } = candidate;
   return revision === pahPublicLoginBrandingRevision(withoutRevision);
 }
@@ -439,9 +551,9 @@ function escapedJson(value: unknown) {
  * 相对资源 URL 由 wrapper 相对当前同源 endpoint 解析。
  */
 export function serializePahPublicLoginBrandingBootstrap(
-  snapshot: PahPublicLoginBrandingSnapshotV1
+  snapshot: PahPublicLoginBrandingSnapshot
 ) {
   return `;(()=>{const s=${escapedJson(
     snapshot
-  )};const b=document.currentScript&&document.currentScript.src;const u=a=>a&&a.url&&!a.url.startsWith('/')?Object.freeze({...a,url:new URL(a.url,b).pathname}):Object.freeze(a);s.favicon=u(s.favicon);s.assets=Object.freeze({...s.assets,logo:u(s.assets.logo),logoDark:u(s.assets.logoDark),compactLogo:u(s.assets.compactLogo),compactLogoDark:u(s.assets.compactLogoDark),...(s.assets.background?{background:u(s.assets.background)}:{})});s.login=Object.freeze(s.login);if(s.plugin)s.plugin=Object.freeze(s.plugin);Object.defineProperty(window,'__PAH_PUBLIC_LOGIN_BRANDING__',{value:Object.freeze(s),configurable:false,writable:false});})();\n`;
+  )};const b=document.currentScript&&document.currentScript.src;const u=a=>a&&a.url&&!a.url.startsWith('/')?Object.freeze({...a,url:new URL(a.url,b).pathname}):Object.freeze(a);s.favicon=u(s.favicon);s.assets=Object.freeze({...s.assets,logo:u(s.assets.logo),logoDark:u(s.assets.logoDark),compactLogo:u(s.assets.compactLogo),compactLogoDark:u(s.assets.compactLogoDark),...(s.assets.background?{background:u(s.assets.background)}:{})});s.login=Object.freeze(s.login);if(s.workbench)s.workbench=Object.freeze({...s.workbench,subtitle:Object.freeze(s.workbench.subtitle),logo:u(s.workbench.logo),logoDark:u(s.workbench.logoDark)});if(s.plugin)s.plugin=Object.freeze(s.plugin);Object.defineProperty(window,'__PAH_PUBLIC_LOGIN_BRANDING__',{value:Object.freeze(s),configurable:false,writable:false});})();\n`;
 }

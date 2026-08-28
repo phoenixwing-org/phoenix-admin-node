@@ -4,6 +4,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  statSync,
   unlinkSync,
   rmSync,
   symlinkSync,
@@ -11,6 +12,8 @@ import {
 } from 'fs';
 import { tmpdir } from 'os';
 import * as path from 'path';
+import { createHash } from 'crypto';
+import { pahPluginRuntimeDigest } from '../../../src/modules/phoenix/service/runtime-activation';
 
 const repositoryRoot = path.resolve(__dirname, '../../..');
 const generator = path.join(
@@ -59,6 +62,35 @@ function generate(root: string) {
     stdio: 'pipe',
   });
   return readFileSync(path.join(root, 'src', 'entities.plugin.ts'), 'utf8');
+}
+
+function activateReleaseModule(
+  root: string,
+  moduleId: string,
+  pluginType: string | null = null
+) {
+  const moduleRoot = path.join(root, 'src', 'modules', moduleId);
+  writeFileSync(path.join(moduleRoot, 'config.ts'), 'export default () => ({});\n');
+  const digest = pahPluginRuntimeDigest(moduleRoot);
+  const directory = path.join(
+    root,
+    '.runtime',
+    'phoenix-plugin-activation',
+    'receipts'
+  );
+  mkdirSync(directory, { recursive: true });
+  writeFileSync(
+    path.join(directory, `${moduleId}.json`),
+    JSON.stringify({
+      formatVersion: 1,
+      moduleId,
+      version: '1.0.0',
+      pluginType,
+      packageSha256: 'a'.repeat(64),
+      manifestSha256: createHash('sha256').update(moduleId).digest('hex'),
+      payloads: { node: digest, vue: digest },
+    })
+  );
 }
 
 function mountDevelopmentProduct(
@@ -137,6 +169,27 @@ describe('运行时实体清单边界', () => {
     expect(readFileSync(fixedEntry, 'utf8')).toBe(fixedContent);
   });
 
+  it('开发命令在 watcher 前同步一次，运行子进程不重复改写清单', () => {
+    const manifest = JSON.parse(
+      readFileSync(path.join(repositoryRoot, 'package.json'), 'utf8')
+    );
+    const configuration = readFileSync(
+      path.join(repositoryRoot, 'src', 'configuration.ts'),
+      'utf8'
+    );
+    for (const scriptName of ['dev', 'dev:midway4']) {
+      expect(manifest.scripts[scriptName]).toContain(
+        'node scripts/pah-sync-runtime-entities.cjs'
+      );
+      expect(manifest.scripts[scriptName]).toContain(
+        'PAH_RUNTIME_ENTITIES_PREPARED=true'
+      );
+    }
+    expect(configuration).toContain(
+      "process.env.PAH_RUNTIME_ENTITIES_PREPARED !== 'true'"
+    );
+  });
+
   it('纯 Host 忽略未知 symlink 与无收据普通目录，并支持确定性冷生成', () => {
     const root = mkdtempSync(path.join(tmpdir(), 'pah-runtime-entities-'));
     const plugin = mkdtempSync(path.join(tmpdir(), 'pah-plugin-entities-'));
@@ -171,6 +224,54 @@ describe('运行时实体清单边界', () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
       rmSync(plugin, { recursive: true, force: true });
+    }
+  });
+
+  it('内容未变化时不重写运行时清单，避免 watch 自触发重启', () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'pah-runtime-entities-'));
+    try {
+      initializeHost(root);
+      generate(root);
+      const generatedFiles = [
+        path.join(root, 'src', 'entities.plugin.ts'),
+        path.join(root, '.runtime', 'tsconfig.phoenix.json'),
+        path.join(root, '.runtime', 'pah-plugin-compile.json'),
+      ];
+      const inodes = generatedFiles.map(file => statSync(file).ino);
+
+      generate(root);
+
+      expect(generatedFiles.map(file => statSync(file).ino)).toEqual(inodes);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('正式 payload 仅在可信激活收据与当前字节一致时聚合实体', () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'pah-runtime-release-'));
+    try {
+      initializeHost(root);
+      writeEntity(root, 'release-plugin', 'ReleaseEntity');
+      activateReleaseModule(root, 'release-plugin');
+
+      expect(generate(root)).toContain(
+        'release-plugin/entity/ReleaseEntity'
+      );
+
+      writeFileSync(
+        path.join(
+          root,
+          'src',
+          'modules',
+          'release-plugin',
+          'entity',
+          'ReleaseEntity.ts'
+        ),
+        'export class TamperedReleaseEntity {}\n'
+      );
+      expect(generate(root)).not.toContain('release-plugin');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
     }
   });
 
@@ -248,20 +349,31 @@ describe('运行时实体清单边界', () => {
     try {
       initializeHost(root);
       writeEntity(root, 'phoenix-branding', 'UnexpectedBrandEntity');
-      execFileSync(
-        process.execPath,
-        [
-          generator,
-          '--root',
-          root,
-          '--ignore-module',
-          'phoenix-branding',
-        ],
-        { cwd: repositoryRoot, stdio: 'pipe' }
+      activateReleaseModule(
+        root,
+        'phoenix-branding',
+        'phoenix.admin.branding'
       );
+      generate(root);
       expect(
         readFileSync(path.join(root, 'src', 'entities.plugin.ts'), 'utf8')
       ).not.toContain('phoenix-branding');
+      expect(
+        JSON.parse(
+          readFileSync(
+            path.join(root, '.runtime', 'pah-plugin-compile.json'),
+            'utf8'
+          )
+        ).inspections
+      ).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            moduleId: 'phoenix-branding',
+            state: 'ready',
+            detail: expect.stringContaining('policy=no-entities'),
+          }),
+        ])
+      );
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

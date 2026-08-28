@@ -19,6 +19,7 @@ const path = require('node:path');
 
 const MODULE_ID_PATTERN = /^[a-z][a-z0-9-]{1,63}$/;
 const COMMIT_PATTERN = /^[a-f0-9]{40}$/;
+const SHA256_PATTERN = /^[a-f0-9]{64}$/;
 const HOST_MODULE_IDS = new Set([
   'base',
   'demo',
@@ -63,6 +64,135 @@ function gitValue(root, args) {
   } catch {
     return null;
   }
+}
+
+function canonicalJson(value) {
+  if (Array.isArray(value)) {
+    return `[${value.map(item => canonicalJson(item)).join(',')}]`;
+  }
+  if (value && typeof value === 'object') {
+    return `{${Object.entries(value)
+      .filter(([, item]) => item !== undefined)
+      .sort(([left], [right]) => left.localeCompare(right, 'en'))
+      .map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function collectRuntimePayloadFiles(root, relative = '') {
+  const directory = path.join(root, ...relative.split('/').filter(Boolean));
+  const files = [];
+  for (const name of readdirSync(directory).sort((left, right) =>
+    left.localeCompare(right, 'en')
+  )) {
+    const next = relative ? `${relative}/${name}` : name;
+    const absolute = path.join(root, ...next.split('/'));
+    const current = lstatSync(absolute);
+    if (current.isSymbolicLink()) {
+      throw new Error(`正式插件 payload 不得包含 symlink：${next}`);
+    }
+    if (current.isDirectory()) {
+      files.push(...collectRuntimePayloadFiles(root, next));
+      continue;
+    }
+    if (!current.isFile()) {
+      throw new Error(`正式插件 payload 含未知文件类型：${next}`);
+    }
+    const content = readFileSync(absolute);
+    files.push({
+      path: next,
+      size: current.size,
+      sha256: createHash('sha256').update(content).digest('hex'),
+    });
+  }
+  return files;
+}
+
+function runtimePayloadDigest(root) {
+  const current = lstatSync(root);
+  if (current.isSymbolicLink() || !current.isDirectory()) {
+    throw new Error('正式插件 payload 必须是 Host 管理的普通目录');
+  }
+  const files = collectRuntimePayloadFiles(root);
+  return {
+    fileCount: files.length,
+    size: files.reduce((total, item) => total + item.size, 0),
+    sha256: createHash('sha256').update(canonicalJson(files)).digest('hex'),
+  };
+}
+
+function inspectReleaseEntityModule(root, moduleId, moduleRoot) {
+  const receiptFile = path.join(
+    root,
+    '.runtime',
+    'phoenix-plugin-activation',
+    'receipts',
+    `${moduleId}.json`
+  );
+  let receipt;
+  try {
+    receipt = JSON.parse(readFileSync(receiptFile, 'utf8'));
+  } catch {
+    return {
+      eligible: false,
+      detail: '正式 payload 缺少启动前可信 Host 激活收据',
+    };
+  }
+  const expected = receipt && receipt.payloads && receipt.payloads.node;
+  if (
+    !receipt ||
+    receipt.formatVersion !== 1 ||
+    receipt.moduleId !== moduleId ||
+    typeof receipt.version !== 'string' ||
+    !receipt.version ||
+    (receipt.pluginType !== null && typeof receipt.pluginType !== 'string') ||
+    !SHA256_PATTERN.test(receipt.packageSha256 || '') ||
+    !SHA256_PATTERN.test(receipt.manifestSha256 || '') ||
+    !expected ||
+    !Number.isSafeInteger(expected.fileCount) ||
+    expected.fileCount < 1 ||
+    !Number.isSafeInteger(expected.size) ||
+    expected.size < 1 ||
+    !SHA256_PATTERN.test(expected.sha256 || '')
+  ) {
+    return { eligible: false, detail: '正式 payload 的 Host 激活收据无效' };
+  }
+  try {
+    const actual = runtimePayloadDigest(moduleRoot);
+    if (
+      actual.fileCount !== expected.fileCount ||
+      actual.size !== expected.size ||
+      actual.sha256 !== expected.sha256
+    ) {
+      return {
+        eligible: false,
+        detail: '正式 node payload 与 Host 激活收据不匹配',
+      };
+    }
+  } catch (error) {
+    return {
+      eligible: false,
+      detail: `正式 node payload 无法验证：${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    };
+  }
+  if (!existsSync(path.join(moduleRoot, 'config.ts'))) {
+    return { eligible: false, detail: '正式 node payload 缺少 config.ts' };
+  }
+  if (receipt.pluginType === 'phoenix.admin.branding') {
+    return {
+      eligible: false,
+      state: 'ready',
+      detail: `trusted release ${receipt.version}; policy=no-entities`,
+    };
+  }
+  return {
+    eligible: true,
+    state: 'ready',
+    detail: `trusted release ${receipt.version}`,
+  };
 }
 
 function inspectDevelopmentEntityModule(moduleId, moduleRoot) {
@@ -159,12 +289,13 @@ function preflightRuntimeEntityModules(root) {
     }
     if (!current.isSymbolicLink()) {
       if (current.isDirectory()) {
-        ignoredModuleIds.push(moduleId);
-        inspections.push({
+        const inspection = inspectReleaseEntityModule(
+          root,
           moduleId,
-          eligible: false,
-          detail: '正式 payload 缺少启动前可信激活收据',
-        });
+          moduleRoot
+        );
+        inspections.push({ moduleId, ...inspection });
+        if (!inspection.eligible) ignoredModuleIds.push(moduleId);
       }
       continue;
     }
@@ -289,6 +420,9 @@ function renderRuntimeEntities(files) {
 }
 
 function replaceFileAtomically(target, content) {
+  if (existsSync(target) && readFileSync(target, 'utf8') === content) {
+    return false;
+  }
   mkdirSync(path.dirname(target), { recursive: true });
   const temporary = `${target}.${process.pid}.${randomUUID()}.tmp`;
   const backup = `${target}.${process.pid}.${randomUUID()}.bak`;
@@ -319,6 +453,7 @@ function replaceFileAtomically(target, content) {
     if (existsSync(backup) && existsSync(target))
       rmSync(backup, { force: true });
   }
+  return true;
 }
 
 function writeRuntimeTsconfig(root, ignoredModuleIds) {

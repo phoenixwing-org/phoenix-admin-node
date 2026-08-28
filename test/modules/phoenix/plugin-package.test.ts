@@ -14,7 +14,14 @@ import { tmpdir } from 'os';
 import * as path from 'path';
 import { PAH_PLUGIN_FORMAT_VERSION } from '../../../src/modules/phoenix/interface/plugin';
 import { PahLocalPluginBackupService } from '../../../src/modules/phoenix/service/local-backup';
-import { PahPluginPackageService } from '../../../src/modules/phoenix/service/package';
+import {
+  PahPluginPackageService,
+  resolvePahHostRoots,
+} from '../../../src/modules/phoenix/service/package';
+import {
+  pahPluginActivationCandidateFile,
+  PahPluginRuntimeActivationService,
+} from '../../../src/modules/phoenix/service/runtime-activation';
 
 const MODULE_ID = 'example-plugin';
 
@@ -248,10 +255,26 @@ describe('Phoenix 插件包本地装配', () => {
         recordVerifiedPackage: jest.fn().mockReturnValue({ recorded: false }),
         removeVerifiedPackageReceipt: jest.fn(),
       },
+      pahPluginRuntimeActivationService:
+        new PahPluginRuntimeActivationService(),
       logger: { info: jest.fn(), error: jest.fn() },
     });
     return { service, register };
   }
+
+  it('自动识别具名 worktree 中并列的 phoenix-admin-vue Host', () => {
+    const namedNodeRoot = path.join(root, 'phoenix-admin-node');
+    const namedVueRoot = path.join(root, 'phoenix-admin-vue');
+    fs.renameSync(path.join(root, 'node'), namedNodeRoot);
+    fs.renameSync(path.join(root, 'vue'), namedVueRoot);
+    process.env.PHOENIX_ADMIN_NODE_ROOT = namedNodeRoot;
+    delete process.env.PHOENIX_ADMIN_VUE_ROOT;
+
+    expect(resolvePahHostRoots()).toEqual({
+      nodeRoot: fs.realpathSync(namedNodeRoot),
+      vueRoot: fs.realpathSync(namedVueRoot),
+    });
+  });
 
   it('只接受 .phoenix.cool 并装配 Node/Vue 后登记 manifest', async () => {
     const packagePath = path.join(root, 'example-plugin.phoenix.cool');
@@ -290,7 +313,18 @@ describe('Phoenix 插件包本地装配', () => {
     ).toBe(true);
     expect(
       readFileSync(path.join(root, 'node', 'src', 'entities.plugin.ts'), 'utf8')
-    ).toContain(`./modules/${MODULE_ID}/entity/item`);
+    ).not.toContain(`./modules/${MODULE_ID}/entity/item`);
+    expect(
+      JSON.parse(
+        readFileSync(
+          pahPluginActivationCandidateFile(
+            path.join(root, 'node'),
+            MODULE_ID
+          ),
+          'utf8'
+        )
+      ).packageSha256
+    ).toBe(result.packageSha256);
   });
 
   it('根目录契约一次报告缺失文件和旧 payload 布局', async () => {
@@ -400,6 +434,8 @@ describe('Phoenix 插件包本地装配', () => {
         }),
         removeVerifiedPackageReceipt,
       },
+      pahPluginRuntimeActivationService:
+        new PahPluginRuntimeActivationService(),
       logger: { info: jest.fn(), error: jest.fn() },
     });
 
@@ -421,6 +457,11 @@ describe('Phoenix 插件包本地装配', () => {
     expect(existsSync(path.join(root, 'vue', 'src/modules', MODULE_ID))).toBe(
       false
     );
+    expect(
+      existsSync(
+        pahPluginActivationCandidateFile(path.join(root, 'node'), MODULE_ID)
+      )
+    ).toBe(false);
   });
 
   it('清理已验证包后移除 Node/Vue 装配并允许重新选择', async () => {
@@ -532,6 +573,9 @@ describe('Phoenix 插件包本地装配', () => {
       retainedTables: ['example_plugin_item'],
       purgedTables: [],
     });
+    const removeVerifiedPackageReceiptsForLifecycle = jest
+      .fn()
+      .mockReturnValue(jest.fn());
     const service = new PahPluginPackageService();
     Object.assign(service, {
       pahPluginService: {
@@ -541,6 +585,9 @@ describe('Phoenix 插件包本地装配', () => {
           state: 'disabled',
         }),
         uninstall,
+      },
+      pahPublicLoginBrandingService: {
+        removeVerifiedPackageReceiptsForLifecycle,
       },
       logger: { info: jest.fn(), error: jest.fn() },
     });
@@ -560,6 +607,10 @@ describe('Phoenix 插件包本地装配', () => {
       })
     );
     expect(uninstall).toHaveBeenCalledWith(MODULE_ID);
+    expect(removeVerifiedPackageReceiptsForLifecycle).toHaveBeenCalledWith(
+      MODULE_ID,
+      '0.1.0'
+    );
     expect(
       readFileSync(path.join(root, 'node', 'src', 'entities.plugin.ts'), 'utf8')
     ).toContain('export const pluginEntities = [];');
@@ -587,6 +638,7 @@ describe('Phoenix 插件包本地装配', () => {
       mkdirSync(target, { recursive: true });
       writeFileSync(path.join(target, 'config.ts'), 'export default {};\n');
     }
+    const restoreBrandingReceipts = jest.fn();
     const service = new PahPluginPackageService();
     Object.assign(service, {
       pahPluginService: {
@@ -597,12 +649,18 @@ describe('Phoenix 插件包本地装配', () => {
         }),
         uninstall: jest.fn().mockRejectedValue(new Error('state changed')),
       },
+      pahPublicLoginBrandingService: {
+        removeVerifiedPackageReceiptsForLifecycle: jest
+          .fn()
+          .mockReturnValue(restoreBrandingReceipts),
+      },
       logger: { info: jest.fn(), error: jest.fn() },
     });
 
     await expect(service.controlledUninstallLocal(MODULE_ID)).rejects.toThrow(
       'state changed'
     );
+    expect(restoreBrandingReceipts).toHaveBeenCalledTimes(1);
     for (const runtime of ['node', 'vue']) {
       expect(
         existsSync(

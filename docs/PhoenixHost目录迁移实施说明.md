@@ -21,10 +21,12 @@
 | Vue Host adapter import | `/@/phoenix/*`、`/$/phoenix/*` | `/@/pah/*`、`/$/pah/*` 保持 Vite alias 兼容 |
 | 身份审查 API | `/admin/phoenix/identity/*` | `/admin/pah/identity/*` 转发到同一 service |
 | 导航 API | `/admin/phoenix/navigation/*` | `/admin/pah/navigation/*` 转发到同一 service |
-| Host 页面 | `/phoenix/identity`、`/phoenix/navigation`、`/phoenix/dictionary-maintenance` | 对应 `/pah/*` 深链在 Router 中 redirect；`/pah/plugins` 不重新开放 |
+| Host 页面 | `/phoenix/identity`、`/phoenix/navigation`、`/phoenix/dictionary-maintenance` | Identity/Navigation 旧深链暂时 redirect；字典旧深链由维护中心迁移后删除；`/pah/plugins` 不重新开放 |
 | 插件管理 | `/phoenix/plugins`、`/admin/phoenix/plugin/*` | 没有 `/pah/plugins` 或 `/admin/pah/plugin/*` 兼容入口 |
 
-兼容层只用于已发布 Host 页面和插件；新开发不得继续新增 `pah` 路径调用。
+兼容层只用于仍处于兼容窗口的已发布 Host 页面和插件；新开发不得继续新增 `pah` 路径调用。
+字典菜单路径不再属于兼容面：Host schema v4 与 `/phoenix/maintenance` 中的
+`phoenix-dictionary-menu-route-v1` 会将旧数据库值等幂升级到 Phoenix 路径，Vue 不再运行时改写。
 
 ## Node 路由约束
 
@@ -51,7 +53,8 @@ Open Issue、Function、Branding 等业务插件只需在下一个各自维护�
 ## 验收与回滚
 
 - Node：类型检查、Host baseline 来源校验、production build、新旧 Identity 权限门禁。
-- Vue：类型检查、production build、`/@/pah` 与 `/$/pah` alias、旧页面深链 redirect。
+- Vue：类型检查、production build、`/@/pah` 与 `/$/pah` alias、Identity/Navigation 旧页面
+  深链 redirect，并断言字典旧深链不再 redirect。
 - 跨产品：至少以 Branding 和带实体/DDL 的业务插件分别验证挂载、停用、卸载与纯 Host 回退。
 
 目录迁移不写数据库、不变更插件包格式。若出现模块发现、路由或构建资产异常，回滚这次目录迁移

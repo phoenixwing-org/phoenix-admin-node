@@ -896,7 +896,7 @@
         "childMenus": [
             {
                 "tenantId": null,
-                "name": "插件列表",
+                "name": "扩展中心",
                 "router": "/helper/plugins",
                 "perms": null,
                 "type": 1,

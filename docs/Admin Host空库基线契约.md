@@ -2,7 +2,7 @@
 
 ## 用途与冻结输入
 
-`src/modules/pah/host-baseline/host-baseline.json` 是 Admin Host 空库基线的唯一清单。
+`src/modules/phoenix/host-baseline/host-baseline.json` 是 Admin Host 空库基线的唯一清单。
 v1 绑定 Node Host `0d94cbfd3179ab327ffb35ec653cbf1869d13c1d`，包含该提交 tracked
 `src/entities.ts` 的 29 个 Host relation，以及同一提交的 Pah Host schema v2 字典治理。
 它不包含之后新增的外部身份四表，也不执行 Pah Host identity 0003。
@@ -11,6 +11,8 @@ v1 绑定 Node Host `0d94cbfd3179ab327ffb35ec653cbf1869d13c1d`，包含该提交
 `0001-host-entities.sql` 候选，不参与 plan 或 apply，也不会调用 `synchronize`、`initDB`
 或 `initMenu`。清单逐文件锁定 size/SHA-256，并通过现有 Git 仓内的冻结 commit object
 和 `git show <commit>:<path>` 复核来源；不要求额外 checkout 或 worktree。
+因此清单 `sourceFiles` 中属于冻结提交的历史 `src/modules/pah/*` 路径必须保留，不能按当前
+物理目录重命名；当前运行入口和基线清单目录统一使用 `src/modules/phoenix/*`。
 
 ## 安全边界
 
