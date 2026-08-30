@@ -1,7 +1,7 @@
 import { Column, Entity, Index } from 'typeorm';
 import { BaseEntity } from '../../base/entity/base';
 
-/** Phoenix 工作台的大分组。内置分组只允许调整展示顺序，不能删除。 */
+/** Phoenix 工作台的大分组。内置分组允许调整显示名、顺序与启用状态，但不能删除。 */
 @Entity('pah_navigation_group')
 export class PahNavigationGroupEntity extends BaseEntity {
   @Index({ unique: true })

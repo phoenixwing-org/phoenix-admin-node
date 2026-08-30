@@ -36,7 +36,7 @@ uploaded → verified → staged → migrated → installed → enabled
 
 ## 导航、授权与迁移台账
 
-- Host 内置“管理”“开发”“业务”三个导航大分组。所有插件导航模块首次物化时统一进入稳定键 `pah-group-business`；manifest 不创建顶层分组，也不覆盖管理员分配。
+- Host 内置“管理”“开发”“业务”三个导航大分组。管理员可在 Host 全局配置中修改显示名，但稳定键始终保持 `pah-group-management`、`pah-group-development`、`pah-group-business`。所有插件导航模块首次物化时统一进入稳定键 `pah-group-business`；manifest 不创建顶层分组、不覆盖共享分组显示名，也不覆盖管理员分配。
 - 独立产品大分组只能由 Host 管理员通过 `save-group` 创建，再从 `navigation/read` 取得稳定 group ID 并用 `navigation/assign` 移动模块。Host 不维护产品 ID 或分组映射。
 - 稳定 targetKey 已有 assignment 时，插件升级、重新登记、停用和再次启用一律保留。删除非内置组仍需管理员显式调用 `remove-group`；Host 不随插件生命周期自动删除分组。
 - 启用插件时，Host 把导航模块、页面和能力码物化为系统菜单，并记录稳定贡献键。

@@ -103,6 +103,7 @@ export interface PahPreparedMigrationPlan {
   manifestSignature: string;
   appliedSignature?: string;
   backupRequired?: boolean;
+  backupProof?: PahMigrationBackupProof;
   items: PahPreparedMigrationItem[];
 }
 
@@ -342,6 +343,9 @@ export class PahPluginMigrationService extends BaseService {
   @Inject()
   compiledPluginRegistry: PahCompiledPluginRegistry;
 
+  @Inject()
+  backupGate: PahMigrationBackupGate;
+
   private readonly plans = new Map<string, PahStoredMigrationPlan>();
 
   async prepare(
@@ -499,6 +503,33 @@ export class PahPluginMigrationService extends BaseService {
     return stored.prepared;
   }
 
+  async claimPlanForExecution(
+    moduleId: string,
+    pluginVersion: string,
+    planId: string,
+    backupProof?: PahMigrationBackupProof
+  ) {
+    const prepared = this.claimPlan(moduleId, pluginVersion, planId);
+    if (prepared.backupRequired) {
+      if (!backupProof) {
+        throw new CoolCommException(
+          '待执行 DDL 缺少当前插件版本的可信备份证明'
+        );
+      }
+      await this.backupGate.verify(backupProof, {
+        moduleId,
+        pluginVersion,
+        dataSourceName: 'default',
+        migrations: prepared.items.map(item => ({
+          id: item.declaration.id,
+          version: item.declaration.version,
+          checksum: item.declaration.checksum,
+        })),
+      });
+    }
+    return { ...prepared, backupProof };
+  }
+
   /** @internal 只接受同一进程刚刚认领的一次性 dry-run 计划。 */
   async executeClaimed(moduleId: string, prepared: PahPreparedMigrationPlan) {
     if (moduleId !== prepared.moduleId) {
@@ -554,7 +585,7 @@ export class PahPluginMigrationService extends BaseService {
             executor: 'pah-sql-v1',
             artifactPath: item.declaration.artifact.path,
             pluginVersion: info.version,
-            backupId: null,
+            backupId: prepared.backupProof?.backupId ?? null,
           }),
           appliedAt: new Date().toISOString(),
           rolledBackAt: null,

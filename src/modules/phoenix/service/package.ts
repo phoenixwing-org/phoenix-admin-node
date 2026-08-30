@@ -168,6 +168,20 @@ function managedPayloadTarget(
   return target;
 }
 
+function ensureHostModulesRoot(root: string, runtime: HostRuntime) {
+  let current = root;
+  for (const segment of ['src', 'modules']) {
+    current = path.join(current, segment);
+    requirePathWithinRoot(root, current, `${runtime} Host modules`);
+    if (existsSync(current)) {
+      requireOrdinaryDirectory(current, `${runtime} Host modules`);
+    } else {
+      mkdirSync(current, { recursive: false });
+    }
+  }
+  return current;
+}
+
 function createArchiveOperationRoot(
   root: string,
   operation: 'discard' | 'uninstall',
@@ -187,6 +201,63 @@ function createArchiveOperationRoot(
   requirePathWithinRoot(root, operationRoot, '插件回收操作目录');
   mkdirSync(operationRoot, { recursive: false });
   return operationRoot;
+}
+
+function createPackageStagingRoot(root: string, moduleId: string) {
+  let current = root;
+  for (const segment of ['.runtime', 'phoenix-plugin-stage']) {
+    current = path.join(current, segment);
+    requirePathWithinRoot(root, current, '插件包暂存目录');
+    if (existsSync(current)) {
+      requireOrdinaryDirectory(current, '插件包暂存目录');
+    } else {
+      mkdirSync(current, { recursive: false });
+    }
+  }
+  const operationRoot = path.join(current, `${moduleId}-${randomUUID()}`);
+  requirePathWithinRoot(root, operationRoot, '插件包暂存操作目录');
+  mkdirSync(operationRoot, { recursive: false });
+  return operationRoot;
+}
+
+function resolveLocalGitExclude(root: string) {
+  const dotGit = path.join(root, '.git');
+  if (!existsSync(dotGit)) return null;
+  if (lstatSync(dotGit).isDirectory()) {
+    return path.join(dotGit, 'info', 'exclude');
+  }
+  try {
+    const value = execFileSync(
+      'git',
+      ['-C', root, 'rev-parse', '--git-path', 'info/exclude'],
+      {
+        cwd: root,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+        timeout: 5000,
+      }
+    ).trim();
+    if (!value) return null;
+    return path.isAbsolute(value) ? value : path.resolve(root, value);
+  } catch {
+    return null;
+  }
+}
+
+function ensureLocalPayloadIgnored(root: string, moduleId: string) {
+  const excludeFile = resolveLocalGitExclude(root);
+  if (!excludeFile || !existsSync(excludeFile)) return false;
+  const rule = `/src/modules/${moduleId}`;
+  const current = readFileSync(excludeFile, 'utf8');
+  if (current.split(/\r?\n/).includes(rule)) return false;
+  writeFileSync(
+    excludeFile,
+    `${current && !current.endsWith('\n') ? '\n' : ''}${rule}\n`,
+    {
+      flag: 'a',
+    }
+  );
+  return true;
 }
 
 function restoreArchivedPayloads(moved: ArchivedHostPayload[]) {
@@ -342,7 +413,9 @@ function restoreArchivedPayloadsAndEntities(
 function stagePayload(
   entries: Map<string, any>,
   source: string,
-  target: string
+  target: string,
+  hostRoot: string,
+  moduleId: string
 ) {
   const prefix = `${source}/`;
   const payloadEntries = [...entries.entries()].filter(([name]) =>
@@ -351,12 +424,8 @@ function stagePayload(
   if (!payloadEntries.length) {
     throw new CoolCommException(`插件包 payload 为空：${source}`);
   }
-  const parent = path.dirname(target);
-  mkdirSync(parent, { recursive: true });
-  const temporary = path.join(
-    parent,
-    `.phoenix-package-${path.basename(target)}-${randomUUID()}`
-  );
+  const operationRoot = createPackageStagingRoot(hostRoot, moduleId);
+  const temporary = path.join(operationRoot, 'payload');
   mkdirSync(temporary, { recursive: false });
   try {
     for (const [name, entry] of payloadEntries) {
@@ -374,9 +443,9 @@ function stagePayload(
     if (!existsSync(path.join(temporary, 'config.ts'))) {
       throw new CoolCommException(`payload 缺少模块入口：${source}/config.ts`);
     }
-    return temporary;
+    return { temporary, operationRoot };
   } catch (error) {
-    rmSync(temporary, { recursive: true, force: true });
+    rmSync(operationRoot, { recursive: true, force: true });
     throw error;
   }
 }
@@ -474,9 +543,16 @@ export class PahPluginPackageService extends BaseService {
       );
     }
     const plan = await this.pahPluginService.migrationPlan(info.moduleId);
+    const verifiedBackup = plan.backupRequired
+      ? await this.pahLocalPluginBackupService.createVerifiedBackup(
+          info.moduleId,
+          info.version
+        )
+      : null;
     const installation = await this.pahPluginService.installCompiled(
       info.moduleId,
-      plan.planId
+      plan.planId,
+      verifiedBackup?.proof
     );
     this.logger.info(
       `[phoenix-plugin] controlled install complete module=${info.moduleId} version=${info.version}`
@@ -486,6 +562,7 @@ export class PahPluginPackageService extends BaseService {
       version: info.version,
       appliedMigrations: plan.items.filter(item => item.state === 'pending')
         .length,
+      backup: verifiedBackup?.backup ?? null,
       installation,
     };
   }
@@ -841,6 +918,7 @@ export class PahPluginPackageService extends BaseService {
     const roots = { node: nodeRoot, vue: vueRoot };
     const staged: Array<{
       temporary: string;
+      operationRoot: string;
       target: string;
       installed: boolean;
       reused: boolean;
@@ -859,17 +937,25 @@ export class PahPluginPackageService extends BaseService {
           roots[payload.runtime],
           ...expected.target.split('/')
         );
-        const temporary = stagePayload(entries, expected.source, target);
+        ensureHostModulesRoot(roots[payload.runtime], payload.runtime);
+        const { temporary, operationRoot } = stagePayload(
+          entries,
+          expected.source,
+          target,
+          roots[payload.runtime],
+          manifest.moduleId
+        );
         if (existsSync(target)) {
           if (!samePayload(temporary, target)) {
-            rmSync(temporary, { recursive: true, force: true });
+            rmSync(operationRoot, { recursive: true, force: true });
             throw new CoolCommException(
               `本机 Host 已存在不同内容的 ${manifest.moduleId}；禁止覆盖测试装配`
             );
           }
-          rmSync(temporary, { recursive: true, force: true });
+          rmSync(operationRoot, { recursive: true, force: true });
           staged.push({
             temporary: '',
+            operationRoot: '',
             target,
             installed: false,
             reused: true,
@@ -878,6 +964,7 @@ export class PahPluginPackageService extends BaseService {
         }
         staged.push({
           temporary,
+          operationRoot,
           target,
           installed: false,
           reused: false,
@@ -887,11 +974,15 @@ export class PahPluginPackageService extends BaseService {
         if (item.reused) continue;
         renameSync(item.temporary, item.target);
         item.installed = true;
+        rmSync(item.operationRoot, { recursive: true, force: true });
+      }
+      for (const runtime of ['node', 'vue'] as const) {
+        ensureLocalPayloadIgnored(roots[runtime], manifest.moduleId);
       }
     } catch (error) {
       for (const item of staged.reverse()) {
         if (item.reused) continue;
-        rmSync(item.installed ? item.target : item.temporary, {
+        rmSync(item.installed ? item.target : item.operationRoot, {
           recursive: true,
           force: true,
         });
@@ -916,6 +1007,9 @@ export class PahPluginPackageService extends BaseService {
         );
       brandingReceiptCreated = brandingReceipt.receiptCreated === true;
       const installation = await this.pahPluginService.register(manifest);
+      const developmentMount = staged.every(
+        item => item.reused && lstatSync(item.target).isSymbolicLink()
+      );
       this.logger.info(
         `[phoenix-plugin] install staged module=${manifest.moduleId} version=${manifest.version} files=${entries.size} sha256=${packageSha256}`
       );
@@ -925,7 +1019,8 @@ export class PahPluginPackageService extends BaseService {
         name: manifest.name,
         fileCount: entries.size,
         packageSha256,
-        restartRequired: staged.some(item => item.installed),
+        restartRequired:
+          staged.some(item => item.installed) || developmentMount,
         validationChecks: [
           ...progress.checks,
           {
@@ -933,6 +1028,8 @@ export class PahPluginPackageService extends BaseService {
             label: 'Host 装配与登记',
             detail: staged.some(item => item.installed)
               ? '新 payload 已装配，manifest 已登记'
+              : developmentMount
+              ? '不可变包与开发挂载逐字节一致，manifest 已登记'
               : '不可变 payload 已复用，manifest 已登记',
           },
         ],

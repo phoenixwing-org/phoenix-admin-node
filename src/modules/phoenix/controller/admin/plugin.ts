@@ -14,6 +14,7 @@ import { PahPluginManifest } from '../../interface/plugin';
 import { PahPluginService } from '../../service/plugin';
 import { PahPluginPackageService } from '../../service/package';
 import { PahPublicLoginBrandingService } from '../../service/public-login-branding';
+import { PahDevelopmentPluginStatusService } from '../../service/development-plugin-status';
 
 /** Phoenix 业务插件管理。 */
 @Provide()
@@ -36,6 +37,16 @@ export class PahPluginController extends BaseController {
 
   @Inject()
   pahPublicLoginBrandingService: PahPublicLoginBrandingService;
+
+  @Inject()
+  pahDevelopmentPluginStatusService: PahDevelopmentPluginStatusService;
+
+  @Get('/development-status', {
+    summary: '检查开发挂载与 Pah 生命周期、Ribbon 投影状态',
+  })
+  async developmentStatus() {
+    return this.ok(await this.pahDevelopmentPluginStatusService.inspect());
+  }
 
   @Get('/public-login-branding/status', {
     summary: '查询当前公开登录品牌快照',

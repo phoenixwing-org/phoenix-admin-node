@@ -421,6 +421,57 @@ describe('Pah 导航分组', () => {
     });
   });
 
+  it('管理员可修改内置分组显示名且不改变稳定 key', async () => {
+    const update = jest.fn();
+    const service = new PahNavigationService();
+    Object.assign(service, {
+      ctx: { admin: { username: 'admin' } },
+      ensureDefaults: jest.fn(),
+      navigationGroupEntity: {
+        findOne: jest.fn().mockResolvedValue({
+          id: 3,
+          groupKey: PAH_BUSINESS_NAVIGATION_GROUP_KEY,
+          label: '业务',
+          orderNum: 30,
+          isBuiltin: true,
+          isEnabled: true,
+        }),
+        update,
+      },
+    });
+
+    await service.saveGroup({ id: 3, label: '业务1' });
+
+    expect(update).toHaveBeenCalledWith(3, {
+      label: '业务1',
+      orderNum: 30,
+      isEnabled: true,
+    });
+    expect(update.mock.calls[0][1]).not.toHaveProperty('groupKey');
+  });
+
+  it('启动补齐默认组时不覆盖管理员保存的业务1', async () => {
+    const save = jest.fn();
+    const service = new PahNavigationService();
+    Object.assign(service, {
+      navigationGroupEntity: {
+        findOne: jest.fn().mockResolvedValue({
+          id: 3,
+          groupKey: PAH_BUSINESS_NAVIGATION_GROUP_KEY,
+          label: '业务1',
+        }),
+        save,
+      },
+      navigationAssignmentEntity: { findOne: jest.fn() },
+      baseSysMenuEntity: { find: jest.fn().mockResolvedValue([]) },
+      pluginInstallationEntity: { find: jest.fn().mockResolvedValue([]) },
+    });
+
+    await (service as any).ensureDefaults();
+
+    expect(save).not.toHaveBeenCalled();
+  });
+
   function navigationService(existingAssignment: any = null) {
     const assignmentSave = jest.fn();
     const groupFindOne = jest

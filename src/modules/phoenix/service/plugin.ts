@@ -11,7 +11,10 @@ import { PahPluginMenuContributionEntity } from '../entity/menu-contribution';
 import { PahPluginInstallationEntity } from '../entity/plugin';
 import { PahPluginRoleGrantEntity } from '../entity/role-grant';
 import { PahPluginMigrationRecordEntity } from '../entity/migration-record';
-import { PahPluginMigrationService } from './migration';
+import {
+  PahMigrationBackupProof,
+  PahPluginMigrationService,
+} from './migration';
 import { PahNavigationService } from './navigation';
 import { PahDictionaryService } from './dictionary';
 import {
@@ -146,8 +149,16 @@ export class PahPluginService extends BaseService {
   }
 
   /** 仅供编译期发布编排调用；控制器不接收制品路径。 */
-  async installCompiled(moduleId: string, planId: string) {
-    return this.installPrepared(await this.getRequired(moduleId), planId);
+  async installCompiled(
+    moduleId: string,
+    planId: string,
+    backupProof?: PahMigrationBackupProof
+  ) {
+    return this.installPrepared(
+      await this.getRequired(moduleId),
+      planId,
+      backupProof
+    );
   }
 
   async enable(
@@ -341,13 +352,15 @@ export class PahPluginService extends BaseService {
 
   private async installPrepared(
     info: PahPluginInstallationEntity,
-    planId: string
+    planId: string,
+    backupProof?: PahMigrationBackupProof
   ) {
     this.requireTransition(info, 'staged');
-    const prepared = this.pahPluginMigrationService.claimPlan(
+    const prepared = await this.pahPluginMigrationService.claimPlanForExecution(
       info.moduleId,
       info.version,
-      planId
+      planId,
+      backupProof
     );
     const staged = await this.transition(info, 'staged');
     try {

@@ -197,6 +197,11 @@ describe('Phoenix 插件包本地装配', () => {
     for (const runtime of ['node', 'vue']) {
       const runtimeRoot = path.join(root, runtime);
       mkdirSync(runtimeRoot, { recursive: true });
+      mkdirSync(path.join(runtimeRoot, '.git', 'info'), { recursive: true });
+      writeFileSync(
+        path.join(runtimeRoot, '.git', 'info', 'exclude'),
+        '# local excludes\n'
+      );
       writeFileSync(
         path.join(runtimeRoot, 'package.json'),
         JSON.stringify({ name: `phoenix-admin-${runtime}` })
@@ -311,6 +316,19 @@ describe('Phoenix 插件包本地装配', () => {
     expect(
       existsSync(path.join(root, 'vue', 'src/modules', MODULE_ID, 'config.ts'))
     ).toBe(true);
+    for (const runtime of ['node', 'vue']) {
+      expect(
+        readFileSync(
+          path.join(root, runtime, '.git', 'info', 'exclude'),
+          'utf8'
+        )
+      ).toContain(`/src/modules/${MODULE_ID}\n`);
+      expect(
+        readdirSync(
+          path.join(root, runtime, '.runtime', 'phoenix-plugin-stage')
+        )
+      ).toEqual([]);
+    }
     expect(
       readFileSync(path.join(root, 'node', 'src', 'entities.plugin.ts'), 'utf8')
     ).not.toContain(`./modules/${MODULE_ID}/entity/item`);
@@ -416,6 +434,51 @@ describe('Phoenix 插件包本地装配', () => {
         filename: path.basename(packagePath),
       })
     ).resolves.toEqual(expect.objectContaining({ moduleId: MODULE_ID }));
+  });
+
+  it('local 环境只在双端开发 symlink 与不可变包逐字节一致时登记', async () => {
+    const packagePath = path.join(root, 'example-plugin.phoenix.cool');
+    createPackage(packagePath);
+    const externalRoot = path.join(root, 'external-product');
+    const payloads = {
+      node: {
+        'config.ts': 'export default { module: "example-plugin" };\n',
+        'entity/item.ts': 'export class ExamplePluginItem {}\n',
+      },
+      vue: {
+        'config.ts': 'export default { module: "example-plugin" };\n',
+      },
+    } as const;
+    for (const runtime of ['node', 'vue'] as const) {
+      const source = path.join(externalRoot, runtime, MODULE_ID);
+      for (const [name, content] of Object.entries(payloads[runtime])) {
+        const file = path.join(source, name);
+        mkdirSync(path.dirname(file), { recursive: true });
+        writeFileSync(file, content);
+      }
+      const modules = path.join(root, runtime, 'src', 'modules');
+      mkdirSync(modules, { recursive: true });
+      symlinkSync(source, path.join(modules, MODULE_ID));
+    }
+    const { service, register } = packageService();
+
+    const result = await service.installLocalPackage({
+      data: packagePath,
+      filename: path.basename(packagePath),
+    });
+
+    expect(register).toHaveBeenCalledTimes(1);
+    expect(result.restartRequired).toBe(true);
+    const receipt = JSON.parse(
+      readFileSync(
+        pahPluginActivationCandidateFile(path.join(root, 'node'), MODULE_ID),
+        'utf8'
+      )
+    );
+    expect(receipt.payloadMode).toBe('development');
+    expect(fs.lstatSync(path.join(root, 'node', 'src/modules', MODULE_ID)).isSymbolicLink()).toBe(
+      true
+    );
   });
 
   it('登记失败时精确清理本次新建的品牌收据与 Host payload', async () => {
@@ -884,7 +947,7 @@ describe('Phoenix 插件包本地装配', () => {
     expect(uninstall).toHaveBeenCalledWith(MODULE_ID);
   });
 
-  it('有待执行 DDL 时使用服务端新计划执行受控安装且不编排备份', async () => {
+  it('有待执行 DDL 时先创建可信备份再绑定一次性计划', async () => {
     const service = new PahPluginPackageService();
     const migrationPlan = jest.fn().mockResolvedValue({
       planId: 'server-plan',
@@ -892,6 +955,18 @@ describe('Phoenix 插件包本地装配', () => {
       items: [{ state: 'pending' }, { state: 'applied' }],
     });
     const installCompiled = jest.fn().mockResolvedValue({ state: 'installed' });
+    const proof = {
+      backupId: 'backup-example',
+      moduleId: MODULE_ID,
+      pluginVersion: '0.1.0',
+      dataSourceName: 'default',
+      createdAt: new Date().toISOString(),
+      restoreProcedure: 'verified restore rehearsal',
+    } as const;
+    const createVerifiedBackup = jest.fn().mockResolvedValue({
+      proof,
+      backup: { backupId: proof.backupId, sha256: 'a'.repeat(64), size: 42 },
+    });
     Object.assign(service, {
       pahPluginService: {
         getByModuleId: jest.fn().mockResolvedValue({
@@ -904,7 +979,7 @@ describe('Phoenix 插件包本地装配', () => {
       },
       pahLocalPluginBackupService: {
         latestProof: jest.fn(),
-        createVerifiedBackup: jest.fn(),
+        createVerifiedBackup,
       },
       logger: { info: jest.fn(), error: jest.fn() },
     });
@@ -912,16 +987,19 @@ describe('Phoenix 插件包本地装配', () => {
     const result = await service.controlledInstallLocal(MODULE_ID);
 
     expect(migrationPlan).toHaveBeenCalledWith(MODULE_ID);
-    expect(installCompiled).toHaveBeenCalledWith(MODULE_ID, 'server-plan');
+    expect(createVerifiedBackup).toHaveBeenCalledWith(MODULE_ID, '0.1.0');
+    expect(installCompiled).toHaveBeenCalledWith(
+      MODULE_ID,
+      'server-plan',
+      proof
+    );
     expect(
       service.pahLocalPluginBackupService.latestProof
-    ).not.toHaveBeenCalled();
-    expect(
-      service.pahLocalPluginBackupService.createVerifiedBackup
     ).not.toHaveBeenCalled();
     expect(result).toEqual(
       expect.objectContaining({
         appliedMigrations: 1,
+        backup: expect.objectContaining({ backupId: proof.backupId }),
       })
     );
   });
@@ -956,7 +1034,11 @@ describe('Phoenix 插件包本地装配', () => {
     );
     expect(latestProof).not.toHaveBeenCalled();
     expect(createVerifiedBackup).not.toHaveBeenCalled();
-    expect(installCompiled).toHaveBeenCalledWith(MODULE_ID, 'server-plan');
+    expect(installCompiled).toHaveBeenCalledWith(
+      MODULE_ID,
+      'server-plan',
+      undefined
+    );
   });
 
   it('API 重启检查只由服务端解析运行制品，不接收浏览器路径', async () => {

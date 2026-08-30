@@ -78,7 +78,10 @@ export interface PhoenixPluginStartupHealthResult {
     Pick<
       PhoenixPluginStartupItem,
       'moduleId' | 'origin' | 'state' | 'detail' | 'pluginType'
-    >
+    > & {
+      version?: string;
+      manifestSha256?: string;
+    }
   >;
 }
 
@@ -500,7 +503,11 @@ export class PhoenixPluginStartupHealthService {
     }
 
     for (const item of report.plugins.filter(
-      plugin => plugin.origin === 'release'
+      plugin =>
+        !(
+          plugin.origin === 'development' &&
+          plugin.pluginType === 'phoenix.admin.branding'
+        )
     )) {
       try {
         const installation = await this.pluginInstallationEntity.findOne({
@@ -520,12 +527,52 @@ export class PhoenixPluginStartupHealthService {
           item.detail = '正式安装记录的 manifest 无效或身份不匹配';
           continue;
         }
+        const expectedManifestSha256 = pahPluginManifestSha256(
+          installation.manifest
+        );
+        if (item.origin === 'development') {
+          if (
+            !item.manifest ||
+            item.manifest.version !== installation.version ||
+            pahPluginManifestSha256(item.manifest) !== expectedManifestSha256
+          ) {
+            item.state = 'action-required';
+            item.detail = '开发挂载 manifest 与当前安装记录不匹配';
+            continue;
+          }
+          const activations = [
+            inspectPahPluginActivation(
+              hostRoot,
+              item.moduleId,
+              'node',
+              item.nodeSource
+            ),
+            inspectPahPluginActivation(
+              hostRoot,
+              item.moduleId,
+              'vue',
+              item.webSource!
+            ),
+          ];
+          const invalid = activations.find(
+            (activation): activation is { valid: false; detail: string } =>
+              activation.valid === false
+          );
+          if (invalid) {
+            item.state = 'action-required';
+            item.detail = `${invalid.detail}；需经不可变包验证并受控重启`;
+            continue;
+          }
+          const receipt = activations[0].valid ? activations[0].receipt : null;
+          item.activationVersion = receipt?.version;
+          item.activationManifestSha256 = receipt?.manifestSha256;
+        }
         if (
           item.activationVersion !== installation.version ||
-          item.activationManifestSha256 !==
-            pahPluginManifestSha256(installation.manifest)
+          item.activationManifestSha256 !== expectedManifestSha256
         ) {
-          item.state = 'quarantined';
+          item.state =
+            item.origin === 'development' ? 'action-required' : 'quarantined';
           item.detail = 'Host 激活收据与当前安装记录不匹配';
           continue;
         }
@@ -581,6 +628,14 @@ export class PhoenixPluginStartupHealthService {
         state: item.state,
         detail: item.detail,
         ...(item.pluginType ? { pluginType: item.pluginType } : {}),
+        ...(item.activationVersion
+          ? { version: item.activationVersion }
+          : item.manifest?.version
+          ? { version: item.manifest.version }
+          : {}),
+        ...(item.activationManifestSha256
+          ? { manifestSha256: item.activationManifestSha256 }
+          : {}),
       })),
     };
     this.writeStatus(hostRoot, result);

@@ -41,6 +41,11 @@ export interface PahPluginRuntimeDigestV1 {
 
 export interface PahPluginActivationReceiptV1 {
   formatVersion: 1;
+  /**
+   * 正式安装必须是 Host 管理的普通目录；本地开发仅允许双端根 symlink，
+   * 且其字节必须先与不可变 .phoenix.cool 包逐项一致。
+   */
+  payloadMode?: 'release' | 'development';
   moduleId: string;
   version: string;
   pluginType: string | null;
@@ -115,9 +120,15 @@ function collectPayloadFiles(
   return files;
 }
 
-export function pahPluginRuntimeDigest(root: string): PahPluginRuntimeDigestV1 {
+export function pahPluginRuntimeDigest(
+  root: string,
+  options: { allowDevelopmentRootSymlink?: boolean } = {}
+): PahPluginRuntimeDigestV1 {
   const current = lstatSync(root);
-  if (current.isSymbolicLink() || !current.isDirectory()) {
+  if (
+    (!options.allowDevelopmentRootSymlink && current.isSymbolicLink()) ||
+    (!current.isSymbolicLink() && !current.isDirectory())
+  ) {
     throw new CoolCommException('正式插件 payload 必须是 Host 管理的普通目录');
   }
   const files = collectPayloadFiles(root);
@@ -150,6 +161,8 @@ function parseReceipt(value: unknown): PahPluginActivationReceiptV1 | null {
   const digests = [receipt.payloads?.node, receipt.payloads?.vue];
   if (
     receipt.formatVersion !== 1 ||
+    (receipt.payloadMode !== undefined &&
+      !['release', 'development'].includes(receipt.payloadMode)) ||
     !MODULE_ID_PATTERN.test(receipt.moduleId) ||
     typeof receipt.version !== 'string' ||
     !receipt.version ||
@@ -173,9 +186,12 @@ function parseReceipt(value: unknown): PahPluginActivationReceiptV1 | null {
 
 function runtimeMatches(
   expected: PahPluginRuntimeDigestV1,
-  payloadRoot: string
+  payloadRoot: string,
+  payloadMode: 'release' | 'development' = 'release'
 ) {
-  const actual = pahPluginRuntimeDigest(payloadRoot);
+  const actual = pahPluginRuntimeDigest(payloadRoot, {
+    allowDevelopmentRootSymlink: payloadMode === 'development',
+  });
   return (
     actual.fileCount === expected.fileCount &&
     actual.size === expected.size &&
@@ -207,9 +223,20 @@ export function inspectPahPluginActivation(
   if (!receipt || receipt.moduleId !== moduleId) {
     return { valid: false, detail: '正式 payload 的 Host 激活收据无效' };
   }
+  if (
+    receipt.payloadMode === 'development' &&
+    process.env.NODE_ENV !== 'local'
+  ) {
+    return {
+      valid: false,
+      detail: '开发 payload 激活收据不得用于非 local 环境',
+    };
+  }
   try {
     const expected = receipt.payloads[runtime];
-    if (!runtimeMatches(expected, payloadRoot)) {
+    if (
+      !runtimeMatches(expected, payloadRoot, receipt.payloadMode ?? 'release')
+    ) {
       return {
         valid: false,
         detail: `正式 ${runtime} payload 与 Host 激活收据不匹配`,
@@ -269,20 +296,39 @@ export class PahPluginRuntimeActivationService {
       throw new CoolCommException('Phoenix 插件包 SHA-256 无效');
     }
     const { nodeRoot, vueRoot } = resolvePahHostRoots();
+    const payloadRoots = {
+      node: path.join(nodeRoot, 'src', 'modules', manifest.moduleId),
+      vue: path.join(vueRoot, 'src', 'modules', manifest.moduleId),
+    };
+    const rootKinds = (['node', 'vue'] as const).map(runtime =>
+      lstatSync(payloadRoots[runtime]).isSymbolicLink()
+        ? 'development'
+        : 'release'
+    );
+    if (rootKinds[0] !== rootKinds[1]) {
+      throw new CoolCommException('Node/Vue payload 开发挂载模式不一致');
+    }
+    const payloadMode = rootKinds[0];
+    if (payloadMode === 'development' && process.env.NODE_ENV !== 'local') {
+      throw new CoolCommException(
+        '只允许在 local 环境验证开发 symlink payload'
+      );
+    }
     const receipt: PahPluginActivationReceiptV1 = {
       formatVersion: 1,
+      payloadMode,
       moduleId: manifest.moduleId,
       version: manifest.version,
       pluginType: manifest.pluginType ?? null,
       packageSha256,
       manifestSha256: pahPluginManifestSha256(manifest),
       payloads: {
-        node: pahPluginRuntimeDigest(
-          path.join(nodeRoot, 'src', 'modules', manifest.moduleId)
-        ),
-        vue: pahPluginRuntimeDigest(
-          path.join(vueRoot, 'src', 'modules', manifest.moduleId)
-        ),
+        node: pahPluginRuntimeDigest(payloadRoots.node, {
+          allowDevelopmentRootSymlink: payloadMode === 'development',
+        }),
+        vue: pahPluginRuntimeDigest(payloadRoots.vue, {
+          allowDevelopmentRootSymlink: payloadMode === 'development',
+        }),
       },
     };
     const content = Buffer.from(`${JSON.stringify(receipt, null, 2)}\n`);
@@ -338,6 +384,12 @@ export class PahPluginRuntimeActivationService {
     ) {
       throw new CoolCommException('插件包激活候选与当前安装记录不匹配');
     }
+    if (
+      receipt.payloadMode === 'development' &&
+      process.env.NODE_ENV !== 'local'
+    ) {
+      throw new CoolCommException('开发 payload 激活候选不得用于非 local 环境');
+    }
     const payloadRoots = {
       node: path.join(nodeRoot, 'src', 'modules', info.moduleId),
       vue: path.join(vueRoot, 'src', 'modules', info.moduleId),
@@ -346,7 +398,13 @@ export class PahPluginRuntimeActivationService {
       if (!existsSync(path.join(payloadRoots[runtime], 'config.ts'))) {
         throw new CoolCommException(`正式 ${runtime} payload 缺少 config.ts`);
       }
-      if (!runtimeMatches(receipt.payloads[runtime], payloadRoots[runtime])) {
+      if (
+        !runtimeMatches(
+          receipt.payloads[runtime],
+          payloadRoots[runtime],
+          receipt.payloadMode ?? 'release'
+        )
+      ) {
         throw new CoolCommException(
           `正式 ${runtime} payload 与已验证插件包不匹配`
         );
