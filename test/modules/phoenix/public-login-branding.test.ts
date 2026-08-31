@@ -218,6 +218,18 @@ describe('Public Login Branding Snapshot', () => {
       expect(saved.activeSnapshot).toMatchObject({
         schemaVersion: 2,
         mode: 'host-default',
+        appName: 'Acme Workspace',
+        titleTemplate: '%s · Acme Workspace',
+        favicon: { sha256: sha256(logo) },
+        login: {
+          title: 'Acme Workspace',
+          subtitle: '统一工作区',
+          prompt: '登录 Acme Workspace，继续管理您的工作区。',
+        },
+        assets: {
+          logo: { sha256: sha256(logo) },
+          logoDark: { sha256: sha256(logo) },
+        },
         workbench: {
           title: 'Acme Workspace',
           subtitle: { mode: 'text', text: '统一工作区' },
@@ -337,7 +349,7 @@ describe('Public Login Branding Snapshot', () => {
     expect(script).not.toContain('</script>');
   });
 
-  it('品牌插件 v2 把工作台贡献编译进同一份静态快照', () => {
+  it('品牌插件 v2 整套固化，Host 备用保存不改变插件 revision', async () => {
     const root = mkdtempSync(path.join(tmpdir(), 'pah-public-branding-v2-'));
     const previousRoot = process.env.PAH_PUBLIC_LOGIN_BRANDING_ROOT;
     const previousEnvironment = process.env.NODE_ENV;
@@ -370,6 +382,49 @@ describe('Public Login Branding Snapshot', () => {
         },
       });
       expect(validatePahPublicLoginBrandingSnapshot(snapshot)).toBe(true);
+
+      const rows = new Map<string, any>();
+      let nextId = 1;
+      const parameterRepository = {
+        findOneBy: jest.fn(async ({ keyName }) => rows.get(keyName) || null),
+        insert: jest.fn(async value => {
+          const row = { id: nextId++, ...value };
+          rows.set(value.keyName, row);
+          return { identifiers: [{ id: row.id }] };
+        }),
+        update: jest.fn(async (where, value) => {
+          const row = Array.from(rows.values()).find(
+            candidate =>
+              candidate.id === where.id && candidate.data === where.data
+          );
+          if (!row) return { affected: 0 };
+          rows.set(row.keyName, { ...row, ...value });
+          return { affected: 1 };
+        }),
+      };
+      Object.assign(service, {
+        ctx: { admin: { username: 'admin' } },
+        logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
+        baseSysParamEntity: parameterRepository,
+        pluginInstallationEntity: { findOne: jest.fn() },
+      });
+      const host = await service.hostWorkbenchBrandingStatus();
+      const saved = await service.saveHostWorkbenchBranding({
+        title: '备用 Host',
+        subtitleMode: 'text',
+        subtitleText: '停用插件后使用',
+        expectedRevision: host.config.revision,
+      });
+      expect(saved.config).toMatchObject({
+        title: '备用 Host',
+        subtitle: { mode: 'text', text: '停用插件后使用' },
+      });
+      expect(saved.activeSnapshot).toMatchObject({
+        mode: 'plugin',
+        revision: snapshot.revision,
+        appName: 'Acme Workspace',
+      });
+      expect(service.currentStatus().revision).toBe(snapshot.revision);
     } finally {
       if (previousRoot === undefined)
         delete process.env.PAH_PUBLIC_LOGIN_BRANDING_ROOT;

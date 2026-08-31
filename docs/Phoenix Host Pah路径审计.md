@@ -79,7 +79,7 @@ Node 工作区可能存在 ignored 的 `.runtime/pah-public-login-branding/`。�
 
 Identity 与 Navigation 的旧页面/API 兼容不能与本次字典迁移一起机械删除。后续独立窗口需要：
 
-1. 扫描 Admin、Dev Hub 与所有已发布插件包，不再存在旧调用；
+1. 扫描 Admin、Hub 与所有已发布插件包，不再存在旧调用；
 2. 对旧入口增加调用计数或弃用日志，观察稳定测试和生产日志；
 3. 提供菜单/配置等幂迁移 operation；
 4. 先删除消费者调用，再删除 Vue redirect 和 Node 兼容 Controller；

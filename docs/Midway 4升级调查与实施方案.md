@@ -144,11 +144,11 @@ driver: PostgreSQL
 
 测试脚本没有输出验证码、口令或 Token。
 
-### Dev Hub 联调入口
+### Hub 联调入口
 
-Dev Hub 增加独立“Cool Admin Midway 4”组：
+Hub 增加独立“Cool Admin Midway 4”组：
 
-Dev Hub 源码：[phoenix-dev-hub](https://gitee.com/phoenixwing/phoenix-dev-hub)
+Hub 源码：[phoenix-hub](https://gitee.com/phoenixwing/phoenix-hub)
 
 | 服务 | 端口 | worktree | 用途 |
 | --- | ---: | --- | --- |

@@ -234,7 +234,7 @@ export function validatePahPublicLoginBrandingContributions(
   if (pluginType !== 'phoenix.admin.branding') {
     errors.push('公开登录品牌贡献只允许 phoenix.admin.branding 插件声明');
   }
-  if (![1, 2].includes(Number(input.contractVersion))) {
+  if (![1, 2].includes(input.contractVersion as number)) {
     errors.push('uiContributions.contractVersion 必须为 1 或 2');
   }
 
@@ -421,14 +421,16 @@ export function validatePahPublicLoginBrandingSnapshot(
     );
   };
   if (
-    ![1, PAH_PUBLIC_LOGIN_BRANDING_SCHEMA_VERSION].includes(
-      Number(value.schemaVersion)
+    ![1, 2, PAH_PUBLIC_LOGIN_BRANDING_SCHEMA_VERSION].includes(
+      value.schemaVersion as number
     ) ||
     typeof value.revision !== 'string' ||
     !/^[a-f0-9]{64}$/.test(value.revision) ||
     !['host-default', 'plugin'].includes(String(value.mode)) ||
     !isPlainPublicText(value.appName, 80) ||
     !isPlainPublicText(value.titleTemplate, 120) ||
+    (typeof value.titleTemplate === 'string' &&
+      value.titleTemplate.split('%s').length !== 2) ||
     !isRecord(value.login) ||
     !isRecord(value.assets) ||
     !isRecord(value.favicon)

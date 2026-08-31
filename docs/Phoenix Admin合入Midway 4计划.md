@@ -7,7 +7,7 @@
 ## 边界
 
 Midway 4 的基础兼容在独立纯上游分支 `codex/cool-admin-8x-midway4` 中完成。该分支只处理
-Cool Admin Node、纯 Vue 8.x、Midway、PostgreSQL、Dev Hub 和跨平台验证，不包含 Pah、
+Cool Admin Node、纯 Vue 8.x、Midway、PostgreSQL、Hub 和跨平台验证，不包含 Pah、
 统一身份或业务插件。
 
 本文件只描述基础候选通过后，如何把它作为可追溯输入应用到 Phoenix Admin。基础调查与门禁

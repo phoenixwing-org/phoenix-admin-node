@@ -25,7 +25,7 @@ v1 绑定 Node Host `0d94cbfd3179ab327ffb35ec653cbf1869d13c1d`，包含该提交
 - 已精确匹配的 baseline 重复 apply 是只读 noop；partial、额外 relation 或结构指纹不匹配
   都 fail-closed。
 - 空库没有需要备份的业务数据，因此 schema apply 的 `backupRequired=false`。数据库整体
-  是回滚边界；验收结束后的删除由 Dev Hub 受控回收流程和本机操作者负责。
+  是回滚边界；验收结束后的删除由 Hub 受控回收流程和本机操作者负责。
 - baseline 不安装 COOL/Pah 业务插件，不写插件 migration、菜单、角色、导航或字典 reconcile
   台账。`verify` 会报告这些计数以及 29 表逐表行数。
 

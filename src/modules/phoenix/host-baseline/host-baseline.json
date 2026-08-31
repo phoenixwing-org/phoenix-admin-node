@@ -16,7 +16,7 @@
     "maintenanceDatabases": ["postgres", "template0", "template1"],
     "emptyDatabaseOnly": true,
     "backupRequiredForEmptyDatabase": false,
-    "cleanupResponsibility": "发布验收结束后由本机操作者通过 Dev Hub 受控回收流程删除精确隔离数据库。"
+    "cleanupResponsibility": "发布验收结束后由本机操作者通过 Hub 受控回收流程删除精确隔离数据库。"
   },
   "sourceFiles": [
     {

@@ -28,7 +28,6 @@ import {
   PahPublicLoginBrandingSnapshot,
   PahPublicLoginBrandingSnapshotAssetV1,
   PahPublicLoginBrandingSnapshotV2,
-  PahWorkbenchBrandingContributionV2,
   serializePahPublicLoginBrandingBootstrap,
   validatePahPublicLoginBrandingSnapshot,
   withPahPublicLoginBrandingRevision,
@@ -162,6 +161,7 @@ function isWorkbenchConfig(
     typeof input.revision !== 'string' ||
     !/^[a-f0-9]{64}$/.test(input.revision) ||
     !isSafePublicText(input.title, 80) ||
+    input.title.includes('%s') ||
     !input.subtitle ||
     typeof input.subtitle !== 'object' ||
     Array.isArray(input.subtitle) ||
@@ -302,6 +302,12 @@ export class PahPublicLoginBrandingService extends BaseService {
 
   private hostWorkbenchConfigCache?: HostWorkbenchBrandingConfigV1;
 
+  private developmentPreview?: {
+    manifest: PahPluginManifest;
+    sourceIdentitySha256: string;
+    assets: Partial<Record<AssetName, PahPublicLoginBrandingAssetDeclaration>>;
+  };
+
   private runtimeRoot() {
     return path.resolve(
       process.env.PAH_PUBLIC_LOGIN_BRANDING_ROOT ||
@@ -381,6 +387,47 @@ export class PahPublicLoginBrandingService extends BaseService {
     }
   }
 
+  private assertSnapshotAssets(snapshot: PahPublicLoginBrandingSnapshot) {
+    const assets = [
+      snapshot.favicon,
+      snapshot.assets.logo,
+      snapshot.assets.logoDark,
+      snapshot.assets.compactLogo,
+      snapshot.assets.compactLogoDark,
+      snapshot.assets.background,
+      ...('workbench' in snapshot
+        ? [snapshot.workbench.logo, snapshot.workbench.logoDark]
+        : []),
+    ].filter(Boolean) as PahPublicLoginBrandingSnapshotAssetV1[];
+    const builtIn = this.defaultAsset();
+    const checked = new Set<string>();
+    for (const asset of assets) {
+      const identity = JSON.stringify(asset);
+      if (checked.has(identity)) continue;
+      checked.add(identity);
+      if (asset.url === builtIn.url) {
+        if (identity !== JSON.stringify(builtIn)) {
+          throw new CoolCommException('Host 内置品牌资源收据不匹配');
+        }
+        continue;
+      }
+      const match = asset.url.match(
+        /^public-login-branding\/assets\/([a-f0-9]{64})\/([a-zA-Z0-9._-]+)$/
+      );
+      if (!match || match[1] !== asset.sha256) {
+        throw new CoolCommException('公开品牌资源路径与 SHA 不匹配');
+      }
+      const stored = this.readPublicAsset(match[1], match[2]);
+      if (
+        stored.mime !== asset.mime ||
+        stored.content.length !== asset.size ||
+        sha256(stored.content) !== asset.sha256
+      ) {
+        throw new CoolCommException('公开品牌资源收据与静态资源不匹配');
+      }
+    }
+  }
+
   private async loadHostWorkbenchConfig() {
     const row = await this.baseSysParamEntity.findOneBy({
       keyName: HOST_WORKBENCH_CONFIG_KEY,
@@ -405,28 +452,38 @@ export class PahPublicLoginBrandingService extends BaseService {
   }
 
   hostDefaultSnapshot(): PahPublicLoginBrandingSnapshotV2 {
-    const mark = this.defaultAsset();
-    const workbench = this.currentHostWorkbenchConfig();
+    let workbench = this.currentHostWorkbenchConfig();
+    try {
+      this.assertHostWorkbenchAssets(workbench);
+    } catch {
+      workbench = this.builtinWorkbenchConfig();
+      this.logger?.warn(
+        '[public-login-branding] Host workbench asset invalid; use built-in default'
+      );
+    }
+    const loginSubtitle =
+      workbench.subtitle.mode === 'text'
+        ? workbench.subtitle.text
+        : '面向团队协作与业务管理的统一工作台。';
     return withPahPublicLoginBrandingRevision({
       schemaVersion: 2,
       mode: 'host-default',
       plugin: null,
-      appName: 'Phoenix Admin',
-      titleTemplate: '%s · Phoenix Admin',
-      favicon: mark,
+      appName: workbench.title,
+      titleTemplate: `%s · ${workbench.title}`,
+      favicon: workbench.logo,
       login: {
         eyebrow: 'PHOENIXWING OPEN SOURCE',
-        title: 'Phoenix Admin Host',
-        subtitle:
-          '面向 Phoenix 业务模块的统一管理工作台。保留成熟权限底座，提供可切换的 Ribbon 与大分组侧栏。',
-        prompt: '登录 Phoenix Admin Host，继续管理您的工作区。',
+        title: workbench.title,
+        subtitle: loginSubtitle,
+        prompt: `登录 ${workbench.title}，继续管理您的工作区。`,
         presentation: 'split',
       },
       assets: {
-        logo: mark,
-        logoDark: mark,
-        compactLogo: mark,
-        compactLogoDark: mark,
+        logo: workbench.logo,
+        logoDark: workbench.logoDark,
+        compactLogo: workbench.logo,
+        compactLogoDark: workbench.logoDark,
       },
       workbench: {
         title: workbench.title,
@@ -517,6 +574,9 @@ export class PahPublicLoginBrandingService extends BaseService {
         : '';
     if (!isSafePublicText(title, 80)) {
       throw new CoolCommException('工作台主标题必须是 1～80 字安全文本');
+    }
+    if (title.includes('%s')) {
+      throw new CoolCommException('工作台主标题不得包含标题模板占位符 %s');
     }
     const subtitle = this.parseWorkbenchSubtitle(
       input.subtitleMode,
@@ -652,8 +712,8 @@ export class PahPublicLoginBrandingService extends BaseService {
       throw error;
     }
 
-    const selection = await this.readSelection();
     this.hostWorkbenchConfigCache = next;
+    const selection = await this.readSelection();
     if (!selection?.moduleId && publicBefore.mode === 'host-default') {
       await this.replaceSelection(
         this.hostDefaultSnapshot(),
@@ -757,6 +817,11 @@ export class PahPublicLoginBrandingService extends BaseService {
       assets
     );
     this.publishSnapshot(snapshot);
+    this.developmentPreview = {
+      manifest,
+      sourceIdentitySha256,
+      assets,
+    };
     return snapshot;
   }
 
@@ -764,13 +829,14 @@ export class PahPublicLoginBrandingService extends BaseService {
     if (process.env.NODE_ENV !== 'local') {
       throw new CoolCommException('品牌开发回退只允许 local 环境');
     }
+    this.developmentPreview = undefined;
     const snapshot = this.hostDefaultSnapshot();
     this.publishSnapshot(snapshot);
     return snapshot;
   }
 
   assertInstalledBrandingReady(plugin: PahPluginInstallationEntity) {
-    this.compilePluginSnapshot(plugin);
+    this.assertSnapshotAssets(this.compilePluginSnapshot(plugin));
   }
 
   private storeBrandAssets(manifest: PahPluginManifest, vueModuleRoot: string) {
@@ -991,6 +1057,29 @@ export class PahPublicLoginBrandingService extends BaseService {
     const background = declarations.background
       ? this.snapshotAsset('background', declarations.background)
       : undefined;
+    const pluginAssets = {
+      logo: this.snapshotAsset('logo', contribution.brand.logo),
+      logoDark: this.snapshotAsset('logoDark', contribution.brand.logoDark),
+      compactLogo: this.snapshotAsset(
+        'compactLogo',
+        contribution.brand.compactLogo
+      ),
+      compactLogoDark: this.snapshotAsset(
+        'compactLogoDark',
+        contribution.brand.compactLogoDark
+      ),
+      ...(background ? { background } : {}),
+    };
+    const pluginWorkbench =
+      contribution.contractVersion === 1
+        ? {
+            title: contribution.brand.appName,
+            subtitle: {
+              mode: 'text' as const,
+              text: contribution.login.subtitle,
+            },
+          }
+        : contribution.workbench;
     const base = {
       mode: 'plugin',
       plugin: {
@@ -1009,30 +1098,22 @@ export class PahPublicLoginBrandingService extends BaseService {
         presentation: contribution.login.presentation,
       },
       assets: {
-        logo: this.snapshotAsset('logo', contribution.brand.logo),
-        logoDark: this.snapshotAsset('logoDark', contribution.brand.logoDark),
-        compactLogo: this.snapshotAsset(
-          'compactLogo',
-          contribution.brand.compactLogo
-        ),
-        compactLogoDark: this.snapshotAsset(
-          'compactLogoDark',
-          contribution.brand.compactLogoDark
-        ),
+        logo: pluginAssets.logo,
+        logoDark: pluginAssets.logoDark,
+        compactLogo: pluginAssets.compactLogo,
+        compactLogoDark: pluginAssets.compactLogoDark,
         ...(background ? { background } : {}),
       },
     } as const;
     if (contribution.contractVersion === 2) {
-      const workbench: PahWorkbenchBrandingContributionV2 =
-        contribution.workbench;
       return withPahPublicLoginBrandingRevision({
         ...base,
         schemaVersion: 2,
         workbench: {
-          title: workbench.title,
-          subtitle: workbench.subtitle,
-          logo: base.assets.compactLogo,
-          logoDark: base.assets.compactLogoDark,
+          title: pluginWorkbench.title,
+          subtitle: pluginWorkbench.subtitle,
+          logo: pluginAssets.compactLogo,
+          logoDark: pluginAssets.compactLogoDark,
         },
       });
     }
@@ -1045,7 +1126,9 @@ export class PahPublicLoginBrandingService extends BaseService {
   private readCurrentSnapshot() {
     try {
       const value = JSON.parse(readFileSync(this.currentFile(), 'utf8'));
-      return validatePahPublicLoginBrandingSnapshot(value) ? value : null;
+      if (!validatePahPublicLoginBrandingSnapshot(value)) return null;
+      this.assertSnapshotAssets(value);
+      return value;
     } catch {
       return null;
     }
@@ -1055,6 +1138,7 @@ export class PahPublicLoginBrandingService extends BaseService {
     if (!validatePahPublicLoginBrandingSnapshot(snapshot)) {
       throw new CoolCommException('拒绝发布不合法的公开登录品牌快照');
     }
+    this.assertSnapshotAssets(snapshot);
     const revisionFile = path.join(
       this.runtimeRoot(),
       'revisions',

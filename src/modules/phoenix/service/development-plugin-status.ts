@@ -233,7 +233,7 @@ export class PahDevelopmentPluginStatusService extends BaseService {
         nextAction = 'repair';
       } else if (!bootReady) {
         state = 'enabled-restart-required';
-        reason = '已启用并物化贡献，等待 Dev Hub 受控重启 Node/Vue';
+        reason = '已启用并物化贡献，等待 Hub 受控重启 Node/Vue';
         nextAction = 'restart';
       } else if (
         visibleRouteKeys.size > 0 &&
@@ -289,7 +289,7 @@ export class PahDevelopmentPluginStatusService extends BaseService {
           activationMode: manifest?.activationMode ?? null,
           bootCheckedAt: boot.checkedAt,
           bootReady,
-          restartOwner: 'phoenix-dev-hub' as const,
+          restartOwner: 'phoenix-hub' as const,
           restartServices: ['admin-api', 'admin-web'],
         },
         readiness: { state, ready: state === 'ready', reason, nextAction },
@@ -299,7 +299,7 @@ export class PahDevelopmentPluginStatusService extends BaseService {
     return {
       checkedAt: new Date().toISOString(),
       authority: 'pah-node' as const,
-      mountAuthority: 'phoenix-dev-hub' as const,
+      mountAuthority: 'phoenix-hub' as const,
       plugins,
     };
   }

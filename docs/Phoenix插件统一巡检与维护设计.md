@@ -19,7 +19,7 @@ Phoenix Admin 可以把“新开发挂载初始化”和“已安装插件维护
 6. 运行制品、依赖与重启；
 7. 停用、卸载与残留清理。
 
-Dev Hub 仍只负责 Node/Vue 源码装配和受控服务重启。Pah Node 是验包、插件台账、DDL、
+Hub 仍只负责 Node/Vue 源码装配和受控服务重启。Pah Node 是验包、插件台账、DDL、
 字典、贡献和卸载的唯一权威；Vue 只展示服务端结论并触发固定生命周期动作。Host 的
 `/phoenix/maintenance` 继续处理编译进 Host 的固定、等幂维护项，不接收插件 SQL 或运行时代码。
 
@@ -28,7 +28,7 @@ Dev Hub 仍只负责 Node/Vue 源码装配和受控服务重启。Pah Node 是�
 - `GET /admin/phoenix/plugin/development-status` 已能检查双端开发挂载、安装状态、迁移 ledger、
   菜单贡献、分组 assignment、当前角色权限和启动快照；
 - `/phoenix/plugins` 已能对开发挂载执行“仅检测、选择不可变包、受控安装、启用、重物化、
-  提示 Dev Hub 重启”；
+  提示 Hub 重启”；
 - 已安装插件卡片已支持停用、启用和保留数据卸载；
 - 启动健康检查能够隔离不可信插件，使单个插件失败不拖垮 Host。
 
@@ -95,7 +95,7 @@ Vue 切换到统一接口并完成回归后，删除仅面向开发挂载的
 | `mounted-version-mismatch` | 挂载 manifest 与台账版本不同 | 重新验包，生成升级计划 |
 | `verified-not-installed` | 包已验证，尚未完成迁移与安装 | 只读 dry-run；确认后受控安装 |
 | `installed-not-enabled` | 数据库已安装，贡献尚未开放 | 启用并物化贡献 |
-| `enabled-restart-required` | 台账已启用，当前进程未加载同版本 payload | Dev Hub/部署 supervisor 受控重启 |
+| `enabled-restart-required` | 台账已启用，当前进程未加载同版本 payload | Hub/部署 supervisor 受控重启 |
 | `enabled-contributions-missing` | 菜单、Ribbon、字典或 assignment 少于声明 | 生成重物化计划，再执行受控修复 |
 | `enabled-permission-filtered` | 贡献存在，但当前角色不可见 | 跳转权限配置，不重装插件 |
 | `ready` | 身份、DDL、字典、贡献、权限和运行快照一致 | 无写操作 |
@@ -180,7 +180,7 @@ Vue 切换到统一接口并完成回归后，删除仅面向开发挂载的
 | 包缺少 Node/Vue runtime artifact | 制品不完整 | 回插件仓重新构建，Host 拒绝安装 |
 | Host/Wing peer 版本不兼容 | Host 版本不满足 | 升级 Host 或使用兼容插件版本 |
 | 开发源码仓自身依赖未准备 | 开发环境未就绪 | 开发者在产品仓按锁文件准备；Host 不代装 |
-| 新 Node/Vue payload 或实体集合发生变化 | 待重启 | Dev Hub/部署 supervisor 执行固定重启动作 |
+| 新 Node/Vue payload 或实体集合发生变化 | 待重启 | Hub/部署 supervisor 执行固定重启动作 |
 
 重启是因为 Midway 装饰器、路由、Entity 集合和 Vite import 图需要重新建立，不是因为页面看到
 `package.json` 就应运行 `pnpm install`。未来若引入受控依赖装配，也只能在隔离候选目录依据精确锁、
@@ -267,9 +267,9 @@ Vue 切换到统一接口并完成回归后，删除仅面向开发挂载的
 - 统一渲染巡检卡片、Block、计划、阻断原因和审计摘要；
 - 只调用固定 API，不提交 SQL、脚本、文件系统路径、shell 参数或伪造 ledger；
 - 状态变化后刷新菜单、动态路由和 Process，并以 Node 复检结果为准；
-- 对重启只打开 Dev Hub/部署入口，不伪造重启完成。
+- 对重启只打开 Hub/部署入口，不伪造重启完成。
 
-### Dev Hub
+### Hub
 
 - 机械创建/删除开发 symlink 与 Git exclude；
 - 受控启动、停止和重启固定 Admin API/Web 服务；
@@ -339,4 +339,4 @@ Vue 切换到统一接口并完成回归后，删除仅面向开发挂载的
 - Vue 的 `docs/PahPLUGIN.md`：扩展中心页面和前端边界；
 - Vue 的 `docs/PahPLUGIN-RUNTIME-TODO.md`：重启、回滚和未来热插拔边界。
 
-本方案不要求现在修改插件包版本、执行安装、运行 SQL、重启服务或改动 Dev Hub。
+本方案不要求现在修改插件包版本、执行安装、运行 SQL、重启服务或改动 Hub。

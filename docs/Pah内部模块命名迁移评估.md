@@ -27,7 +27,7 @@ API 已经是 `/admin/phoenix/plugin`。因此当前没有为了品牌展示而�
 | ------------------- | ------------------------------------------ | ------------------------------------------------- |
 | Admin Node 评估基线 | `35007421fdb3347f756a0c4f4599bd7b4b2f42f6` | 主工作树另有历史生成文件；本评估使用独立 worktree |
 | Admin Vue           | `096ed761bc0e6b80586c67e55efed957d162c549` | clean                                             |
-| Phoenix Dev Hub     | `7759c238c08e6b7a213de3caedbdc7d0186da331` | clean                                             |
+| Phoenix Hub     | `7759c238c08e6b7a213de3caedbdc7d0186da331` | clean                                             |
 | Phoenix Branding    | `22bde2bd39a6ecf7143f12ea9f51e11237a8ca37` | clean                                             |
 
 独立 worktree 为 `<workspace>/.worktrees/phoenix-admin-generated-entities`。本轮没有读取或
@@ -40,7 +40,7 @@ API 已经是 `/admin/phoenix/plugin`。因此当前没有为了品牌展示而�
   `Pah*` 符号、43 个实际读取的 `process.env.PAH_*` 键和 11 张 `pah_*` Entity 表。
 - Vue `src/pah` 有 53 个文件，`src/modules/pah` 有 7 个文件；约 77 个不同的 `Pah*`
   符号、21 个 `PAH_*`/`VITE_PAH_*` 常量或环境名和 7 个 `pah.*` 浏览器持久化键。
-- 任一 Pah 标识的粗粒度文件命中为 Node 72、Vue 76、Dev Hub 23；Branding、Open Issue、
+- 任一 Pah 标识的粗粒度文件命中为 Node 72、Vue 76、Hub 23；Branding、Open Issue、
   Function 和 BOM 四个产品仓合计约 88。方案 B 至少跨越约 259 个命中文件。
 
 复现盘点时应排除 `.git`、`node_modules`、`dist` 和 coverage，并分别统计源码、测试、脚本、
@@ -54,7 +54,7 @@ API 已经是 `/admin/phoenix/plugin`。因此当前没有为了品牌展示而�
 | --- | --- | --- |
 | Admin Node | `fc7b3dd0d380801bf5d1bdfbb87b11552927d22e` | `src/modules/pah` 仍为 36 个文件；插件启动健康与编译隔离继续使用现有物理目录 |
 | Admin Vue | `11fab10882a15a5b800cc9707b00ba4df2bb80e7` | `src/pah` 与 `src/modules/pah` 均保留；外部插件由 Host 虚拟入口隔离加载 |
-| Phoenix Dev Hub | `6e58c859d10ac5e009d16ef0cd3de0c6a0ab22ed` | 旧 `/admin/pah/plugin/*` 调用已改为 `/admin/phoenix/plugin/*`，Hub 只维护 symlink/Git exclude |
+| Phoenix Hub | `6e58c859d10ac5e009d16ef0cd3de0c6a0ab22ed` | 旧 `/admin/pah/plugin/*` 调用已改为 `/admin/phoenix/plugin/*`，Hub 只维护 symlink/Git exclude |
 
 结论保持不变：**方案 A 在单独迁移窗口内可行，但不是当前纯 Host 与插件生命周期恢复的前置项；方案 B
 仍不应实施。** 当前新增的公开登录品牌、动态插件实体清单和插件启动健康检查进一步扩大了物理路径迁移
@@ -67,7 +67,7 @@ API 已经是 `/admin/phoenix/plugin`。因此当前没有为了品牌展示而�
 - Node `package.json` 仍打包 `dist/modules/pah` 下的 Host schema、baseline 和 SQL 资产；
 - Vue 的 `/@/pah/*` 实际依赖通用 `/@ -> src` alias，物理目录移动后必须增加显式兼容 facade，
   不能只修改 Host 自身 import；
-- Dev Hub 的插件 API 已改为 `/admin/phoenix/plugin/*`；该修复不改变物理目录迁移结论，也不得以此为由
+- Hub 的插件 API 已改为 `/admin/phoenix/plugin/*`；该修复不改变物理目录迁移结论，也不得以此为由
   重新开放旧接口；
 - `validatePahPluginManifest` 改为更直观的内部函数名 `validatePhoenixPluginManifest`，只属于内部符号
   整理，不等于批准移动 `src/modules/pah`，也不得顺带修改 wire、表名、权限或制品标识。
@@ -94,12 +94,12 @@ Node 的 `src/modules/phoenix/service/public-login-branding.ts` 与 Vue 的
 
 | 标识                                                              | 消费者或持久化位置                               | 决策                           |
 | ----------------------------------------------------------------- | ------------------------------------------------ | ------------------------------ |
-| `pah-business-module`                                             | `.phoenix.cool` 包 metadata、Host/Dev Hub 验包器 | 保留                           |
+| `pah-business-module`                                             | `.phoenix.cool` 包 metadata、Host/Hub 验包器 | 保留                           |
 | `pah-plugin.artifacts.json`                                       | 多个产品插件、Host production 装配器             | 保留                           |
 | `pah-group-business`                                              | manifest、导航表、管理员 assignment              | 永久保留稳定 key               |
 | `pah:plugin:*`                                                    | Cool 菜单/API 权限                               | 保留；新显示名不改权限 key     |
 | 11 张 `pah_*` 表及其索引、ledger                                  | PostgreSQL、备份、恢复、preflight                | 保留物理表名                   |
-| `PAH_*`、`VITE_PAH_*`                                             | Node/Vue/Dev Hub 启动 Profile                    | 至少一个 major 周期双读        |
+| `PAH_*`、`VITE_PAH_*`                                             | Node/Vue/Hub 启动 Profile                    | 至少一个 major 周期双读        |
 | `__PAH_PUBLIC_LOGIN_BRANDING__`                                   | Node 首帧脚本、Vue、Branding runtime             | 保留或双读，不做单边替换       |
 | `pah.*` storage keys                                              | 浏览器工作台偏好                                 | 旧键只读迁移，禁止直接丢失设置 |
 | `/@/pah/*`、`/$/pah/*`                                            | 产品插件的 Host adapter import                   | 保留 alias 或兼容 facade       |
@@ -112,7 +112,7 @@ Node 的 `src/modules/phoenix/service/public-login-branding.ts` 与 Vue 的
 
 ## 已收口的独立契约错位
 
-Dev Hub `src/server/api.ts` 已统一请求 `/admin/phoenix/plugin/list` 与
+Hub `src/server/api.ts` 已统一请求 `/admin/phoenix/plugin/list` 与
 `/admin/phoenix/plugin/migration-plan`，并有测试拒绝 `/admin/pah/plugin`。Host 不重新开放旧插件
 管理 API；后续路径审计应持续把这一点作为回归门禁。
 
@@ -165,7 +165,7 @@ host-baseline 路径。预计 2–4 个工程日，包括两端完整构建、�
 2. 环境变量优先读取新键，兼容 `PAH_*`；新旧同时存在且值不同时 fail-closed；
 3. API 新旧路由指向同一 service，旧页面只做 redirect，不建立第二套状态或生命周期；
 4. 浏览器设置和登录快照全局变量双读，迁移成功后只写新键，保留旧读路径至 major 窗口结束；
-5. Dev Hub、Branding、Open Issue、Function、BOM 依次升级，不能要求所有相邻源码目录同时 dirty；
+5. Hub、Branding、Open Issue、Function、BOM 依次升级，不能要求所有相邻源码目录同时 dirty；
 6. 最后才评估删除 deprecated facade，并以已发布旧插件包作兼容夹具。
 
 即使选择方案 B，也建议永久保留以下物理/wire 名称：
@@ -184,7 +184,7 @@ host-baseline 路径。预计 2–4 个工程日，包括两端完整构建、�
 
 ## 推荐分阶段顺序
 
-1. **先修独立错位**：单独修复 Dev Hub 两个 `/admin/pah/plugin/*` 调用并提交。
+1. **先修独立错位**：单独修复 Hub 两个 `/admin/pah/plugin/*` 调用并提交。
 2. **冻结兼容面**：增加 API、包 kind、descriptor、数据库表、权限 key、导航 assignment、环境变量、
    snapshot global 和 storage key 的契约测试。
 3. **可选执行 A-Node**：显式锁定 Controller prefix，再移动 Node 目录、构建并回滚演练。
@@ -214,9 +214,9 @@ clean-validation worktree。
 - `pnpm run test`、`pnpm run lint`、`pnpm run typecheck`、`pnpm run build`；
 - 登录快照在 Host 默认和活动品牌两态均无 Phoenix/Acme 交叉闪烁，认证表单不被接管。
 
-### Dev Hub 与产品制品
+### Hub 与产品制品
 
-- Dev Hub `pnpm run verify`，并断言不再请求 `/admin/pah/plugin`；
+- Hub `pnpm run verify`，并断言不再请求 `/admin/pah/plugin`；
 - 旧版 `.phoenix.cool`、当前版包和同版本重装均通过权威 Node 验包；
 - `kind=pah-business-module`、`pah-plugin.artifacts.json` 和 `pah-group-business` 保持字节兼容；
 - 至少验证一个零 DDL Branding 插件和一个带 DDL 插件；
