@@ -1,7 +1,7 @@
 {
   "formatVersion": 1,
   "schemaId": "pah-host",
-  "version": 4,
+  "version": 5,
   "migrations": [
     {
       "id": "pah-host-dictionary-reconcile",
@@ -19,13 +19,19 @@
       "id": "pah-host-external-identity",
       "version": 3,
       "path": "schema/0003-external-identity.sql",
-      "checksum": "sha256:100bc326c1fba45f62b9ab97148a11b697c4854ecacdfafd3465239c91a03391"
+      "checksum": "sha256:00f7d8367641e1d76ddeb3f064363aa5181a7ed8635b5a7e6a017421c523542d"
     },
     {
       "id": "phoenix-host-dictionary-menu-route",
       "version": 4,
       "path": "schema/0004-dictionary-menu-route.sql",
       "checksum": "sha256:3e28db22028611223fdb5b7c226c9f5c83092cefc6a777e6948f11d3ae02233f"
+    },
+    {
+      "id": "phoenix-host-files-v1",
+      "version": 5,
+      "path": "schema/0005-host-files-v1.sql",
+      "checksum": "sha256:a3e62c784f15a4864211128dc44f6f16d187690ef9e56b0f2f81fd194d6fb65d"
     }
   ]
 }

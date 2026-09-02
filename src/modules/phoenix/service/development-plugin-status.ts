@@ -12,6 +12,7 @@ import { PahPluginInstallationEntity } from '../entity/plugin';
 import { PahNavigationGroupAssignmentEntity } from '../entity/navigation-group-assignment';
 import { PahPluginMigrationRecordEntity } from '../entity/migration-record';
 import { PahPluginManifest } from '../interface/plugin';
+import { latestRetainedPluginPackage } from './package-store';
 import { resolvePahHostRoots } from './runtime-host';
 import {
   inspectPhoenixPluginModules,
@@ -99,6 +100,23 @@ export class PahDevelopmentPluginStatusService extends BaseService {
     for (const item of mounted) {
       const installation = installationByModule.get(item.moduleId) ?? null;
       const manifest = item.manifest ?? installation?.manifest ?? null;
+      let retainedPackage = null;
+      try {
+        retainedPackage = manifest
+          ? latestRetainedPluginPackage(
+              item.moduleId,
+              manifest.version,
+              item.sourceCommit
+            )
+          : null;
+      } catch {
+        retainedPackage = null;
+      }
+      const retainedPackageMatchesMount = Boolean(
+        retainedPackage &&
+          (!item.sourceCommit ||
+            retainedPackage.sourceCommit === item.sourceCommit)
+      );
       const vueMount = path.join(vueRoot, 'src', 'modules', item.moduleId);
       let pairMounted = false;
       try {
@@ -194,6 +212,7 @@ export class PahDevelopmentPluginStatusService extends BaseService {
       let reason: string;
       let nextAction:
         | 'choose-package'
+        | 'restore-package'
         | 'install'
         | 'enable'
         | 'restart'
@@ -208,17 +227,33 @@ export class PahDevelopmentPluginStatusService extends BaseService {
         nextAction = 'none';
       } else if (!installation) {
         state = 'mounted-unregistered';
-        reason = '开发源码已挂载，但 Pah 还没有登记该插件';
-        nextAction = 'choose-package';
+        reason = retainedPackageMatchesMount
+          ? '开发源码已挂载；Host 已保留对应插件包，可以重新校验并登记'
+          : '开发源码已挂载，但 Phoenix 插件中心尚未登记该插件';
+        nextAction = retainedPackageMatchesMount
+          ? 'restore-package'
+          : 'choose-package';
       } else if (installation.version !== manifest.version) {
         state = 'mounted-version-mismatch';
-        reason = `挂载版本 ${manifest.version} 与 Pah 记录 ${installation.version} 不一致`;
-        nextAction = 'choose-package';
+        reason = retainedPackageMatchesMount
+          ? `挂载版本 ${manifest.version} 与 Phoenix 插件中心登记版本 ${installation.version} 不一致；Host 已保留挂载版本插件包`
+          : `挂载版本 ${manifest.version} 与 Phoenix 插件中心登记版本 ${installation.version} 不一致`;
+        nextAction = retainedPackageMatchesMount
+          ? 'restore-package'
+          : 'choose-package';
+      } else if (installation.state === 'uninstalled') {
+        state = 'registered-not-installed';
+        reason = retainedPackageMatchesMount
+          ? '插件已卸载并保留数据；Host 已保留对应插件包'
+          : '插件已卸载并保留数据，需要重新选择对应插件包';
+        nextAction = retainedPackageMatchesMount
+          ? 'restore-package'
+          : 'choose-package';
       } else if (
         !['installed', 'enabled', 'disabled'].includes(installation.state)
       ) {
         state = 'registered-not-installed';
-        reason = `Pah 已登记，当前生命周期为 ${installation.state}`;
+        reason = `Phoenix 插件中心已登记，当前生命周期为 ${installation.state}`;
         nextAction = 'install';
       } else if (installation.state !== 'enabled') {
         state = 'installed-not-enabled';
@@ -244,7 +279,7 @@ export class PahDevelopmentPluginStatusService extends BaseService {
         nextAction = 'grant';
       } else {
         state = 'ready';
-        reason = '开发挂载、Pah 生命周期、菜单贡献与当前运行时一致';
+        reason = '开发挂载、插件中心生命周期、菜单贡献与当前运行时一致';
         nextAction = 'none';
       }
 
@@ -292,6 +327,17 @@ export class PahDevelopmentPluginStatusService extends BaseService {
           restartOwner: 'phoenix-hub' as const,
           restartServices: ['admin-api', 'admin-web'],
         },
+        retainedPackage: retainedPackage
+          ? {
+              filename: retainedPackage.filename,
+              version: retainedPackage.version,
+              packageSha256: retainedPackage.packageSha256,
+              size: retainedPackage.size,
+              sourceCommit: retainedPackage.sourceCommit,
+              storedAt: retainedPackage.storedAt,
+              matchesMount: retainedPackageMatchesMount,
+            }
+          : null,
         readiness: { state, ready: state === 'ready', reason, nextAction },
       });
     }

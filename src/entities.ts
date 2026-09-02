@@ -34,6 +34,9 @@ import * as entity30 from './modules/base/entity/sys/menu';
 import * as entity31 from './modules/base/entity/sys/log';
 import * as entity32 from './modules/base/entity/sys/department';
 import * as entity33 from './modules/base/entity/sys/conf';
+import * as entity34 from './modules/phoenix/entity/file-descriptor';
+import * as entity35 from './modules/phoenix/entity/file-binding';
+import * as entity36 from './modules/phoenix/entity/file-audit-record';
 export const entities = [
   ...Object.values(entity0),
   ...Object.values(entity1),
@@ -69,5 +72,8 @@ export const entities = [
   ...Object.values(entity31),
   ...Object.values(entity32),
   ...Object.values(entity33),
+  ...Object.values(entity34),
+  ...Object.values(entity35),
+  ...Object.values(entity36),
   ...pluginEntities,
 ];

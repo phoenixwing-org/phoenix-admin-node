@@ -8,19 +8,22 @@ const baselineRoot = path.resolve(
   __dirname,
   '../../../src/modules/phoenix/host-baseline'
 );
+const repositoryRoot = path.resolve(__dirname, '../../..');
 // eslint-disable-next-line node/no-unpublished-require
 const baseline = require('../../../scripts/pah-host-baseline.cjs');
 
 describe('Admin Host 空库基线', () => {
   const { manifest } = baseline.loadAndVerifyManifest(baselineRoot);
 
-  it('绑定冻结 Host commit，并由其 tracked entity 真源导出 29 个 relation', () => {
+  it('绑定冻结 Host commit，并由其 tracked entity 真源导出 36 个 relation', () => {
     const entitiesSource = execFileSync(
       'git',
       ['show', `${manifest.sourceCommit}:src/entities.ts`],
       { encoding: 'utf8' }
     );
-    const imports = [...entitiesSource.matchAll(/from '([^']+)'/g)].map(
+    const imports = [
+      ...entitiesSource.matchAll(/import \* as entity\d+ from '([^']+)'/g),
+    ].map(
       match => path.posix.normalize(path.posix.join('src', `${match[1]}.ts`))
     );
     const relations = imports.flatMap(file => {
@@ -35,33 +38,36 @@ describe('Admin Host 空库基线', () => {
     });
 
     expect(manifest.sourceCommit).toBe(
-      '0d94cbfd3179ab327ffb35ec653cbf1869d13c1d'
+      '2bdd0defff41e58c416d6a7431c2b17f4537ab93'
     );
     expect([...new Set(relations)].sort()).toEqual(manifest.requiredRelations);
-    expect(manifest.requiredRelations).toHaveLength(29);
-    expect(manifest.pahHostSchemaVersion).toBe(2);
+    expect(manifest.requiredRelations).toHaveLength(36);
+    expect(manifest.pahHostSchemaVersion).toBe(5);
   });
 
-  it('锁定三份 schema SQL、管理员 seed 与完整结构指纹', () => {
+  it('锁定六份 schema SQL、管理员 seed 与完整结构指纹', () => {
     expect(manifest.schemaArtifacts.map(item => item.sha256)).toEqual([
       'ef772216079ec96bdcfc66f5fe202877131b686814db25ed1eac251d699bf24e',
       'c9f33662bf2714da5ec84b2282795b9ca24fabd8bb65753b9d16a7188347fe7f',
       '2a6d89cde9e978f63aad61a1c4314dc9dd98e77a6301e43975b1c661368f5f1b',
+      '00f7d8367641e1d76ddeb3f064363aa5181a7ed8635b5a7e6a017421c523542d',
+      '3e28db22028611223fdb5b7c226c9f5c83092cefc6a777e6948f11d3ae02233f',
+      'a3e62c784f15a4864211128dc44f6f16d187690ef9e56b0f2f81fd194d6fb65d',
     ]);
     expect(manifest.adminSeedArtifact.sha256).toBe(
       'd0da3407494d5b6da228d8768edd2786436433c3717cc8004828fd6b18c7b7e0'
     );
     expect(manifest.expectedSchema).toEqual({
-      columns: 304,
-      indexes: 166,
-      constraints: 30,
-      sequences: 29,
+      columns: 421,
+      indexes: 196,
+      constraints: 61,
+      sequences: 36,
       sha256:
-        '4318073267eed45be87df184407cc12c4fa8fef8f44b784a9687a49c081a98c0',
+        '98959a1522da63c3ebdcd1f8a91fc9467d5ad81cf6835e81dfd1dc6a78fbed2b',
     });
   });
 
-  it('组合基线包含规范字典索引，但不包含冻结 commit 之后的身份表', () => {
+  it('组合基线包含规范字典、外部身份与 Host Files v1', () => {
     const sql = manifest.schemaArtifacts
       .map(item => readFileSync(path.join(baselineRoot, item.path), 'utf8'))
       .join('\n');
@@ -70,10 +76,63 @@ describe('Admin Host 空库基线', () => {
     expect(sql).toContain('CREATE UNIQUE INDEX "UQ_dict_info_type_value"');
     expect(sql).toContain('CREATE INDEX IF NOT EXISTS "IDX_dict_info_enabled"');
     expect(sql).toContain('CREATE INDEX IF NOT EXISTS "IDX_dict_info_tags"');
-    expect(sql).not.toContain('pah_external_identity');
-    expect(sql).not.toContain('pah_external_bind_request');
-    expect(sql).not.toContain('pah_oauth_login_attempt');
-    expect(sql).not.toContain('pah_oauth_login_ticket');
+    expect(sql).toContain('pah_external_identity');
+    expect(sql).toContain('pah_external_bind_request');
+    expect(sql).toContain('pah_oauth_login_attempt');
+    expect(sql).toContain('pah_oauth_login_ticket');
+    expect(sql).toContain('pah_file_descriptor');
+    expect(sql).toContain('pah_file_binding');
+    expect(sql).toContain('pah_file_audit_record');
+  });
+
+  it('v2 活动基线逐项收口当前 36 个 Host 实体与自包含 schema 制品', () => {
+    const entitiesSource = readFileSync(
+      path.join(repositoryRoot, 'src/entities.ts'),
+      'utf8'
+    );
+    const entitySources = [
+      ...entitiesSource.matchAll(/from '(\.\/modules\/[^']+)'/gu),
+    ].map(match =>
+      path.join(repositoryRoot, 'src', `${match[1].slice(2)}.ts`)
+    );
+    const currentRelations = [
+      ...new Set(
+        entitySources.flatMap(file => [
+          ...readFileSync(file, 'utf8').matchAll(/@Entity\('([^']+)'\)/gu),
+        ]).map(match => match[1])
+      ),
+    ].sort();
+    const artifactRelations = [
+      ...new Set(
+        manifest.schemaArtifacts.flatMap(artifact => {
+          const file = path.join(baselineRoot, artifact.path);
+          const content = readFileSync(file);
+          expect(content.byteLength).toBe(artifact.size);
+          expect(createHash('sha256').update(content).digest('hex')).toBe(
+            artifact.sha256
+          );
+          return baseline.extractCreatedRelations(content.toString('utf8'));
+        })
+      ),
+    ].sort();
+
+    expect(manifest.version).toBe(2);
+    expect(manifest.requiredRelations).toHaveLength(36);
+    expect(manifest.requiredRelations).toEqual(currentRelations);
+    expect(manifest.requiredRelations).toEqual(artifactRelations);
+  });
+
+  it('不会把 SQL 注释里的 IF 当作 relation', () => {
+    expect(
+      baseline.extractCreatedRelations(
+        '-- CREATE TABLE IF NOT EXISTS 不会补齐约束。'
+      )
+    ).toEqual([]);
+    expect(
+      baseline.extractCreatedRelations(
+        'CREATE TABLE IF NOT EXISTS actual_relation (id integer);'
+      )
+    ).toEqual(['actual_relation']);
   });
 
   it('制品字节被修改后 fail-closed', () => {
@@ -187,7 +246,7 @@ describe('Admin Host 空库基线', () => {
       admin.username
     );
     expect(confirmation).toMatch(
-      /^seed-release-validation-admin:fixture_release_validation:v1:[a-f0-9]{12}$/
+      /^seed-release-validation-admin:fixture_release_validation:v2:[a-f0-9]{12}$/
     );
     expect(confirmation).not.toContain(admin.username);
     expect(confirmation).not.toContain(admin.password);
@@ -248,7 +307,7 @@ describe('Admin Host 空库基线', () => {
       reset
     );
     expect(confirmation).toMatch(
-      /^reset-release-validation-admin:fixture_release_validation:v1:(?:[a-f0-9]{12}:){2}[a-f0-9]{12}$/
+      /^reset-release-validation-admin:fixture_release_validation:v2:(?:[a-f0-9]{12}:){2}[a-f0-9]{12}$/
     );
     const summarySegments = confirmation.split(':').slice(-3);
     expect(summarySegments).not.toContain(reset.currentUsername);

@@ -1,6 +1,6 @@
 {
   "name": "phoenix-admin-node",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "packageManager": "pnpm@10.15.1",
   "description": "Phoenix Admin Host Node.js backend maintained from Cool Admin Midway 8.x",
   "private": true,

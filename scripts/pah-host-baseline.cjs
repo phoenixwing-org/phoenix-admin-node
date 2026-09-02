@@ -76,7 +76,7 @@ function verifiedFile(root, artifact) {
 function extractCreatedRelations(sql) {
   const relations = [];
   const pattern =
-    /\bCREATE\s+TABLE(?:\s+IF\s+NOT\s+EXISTS)?\s+(?:"([^"]+)"|([a-z][a-z0-9_]*))/giu;
+    /\bCREATE\s+TABLE(?:\s+IF\s+NOT\s+EXISTS)?\s+(?:"([^"]+)"|(?!IF\b)([a-z][a-z0-9_]*))/giu;
   for (const match of sql.matchAll(pattern))
     relations.push(match[1] || match[2]);
   return relations;
@@ -89,13 +89,15 @@ function loadAndVerifyManifest(root = baselineRoot) {
   if (
     manifest.formatVersion !== 1 ||
     manifest.baselineId !== 'phoenix-admin-host' ||
-    manifest.version !== 1 ||
+    !Number.isSafeInteger(manifest.version) ||
+    manifest.version < 1 ||
     !/^[a-f0-9]{40}$/u.test(manifest.sourceCommit) ||
-    manifest.pahHostSchemaVersion !== 2 ||
+    !Number.isSafeInteger(manifest.pahHostSchemaVersion) ||
+    manifest.pahHostSchemaVersion < 2 ||
     !Array.isArray(manifest.sourceFiles) ||
     manifest.sourceFiles.length === 0 ||
     !Array.isArray(manifest.schemaArtifacts) ||
-    manifest.schemaArtifacts.length !== 3 ||
+    manifest.schemaArtifacts.length < 3 ||
     !Array.isArray(manifest.requiredRelations) ||
     manifest.requiredRelations.length === 0 ||
     !manifest.requiredRelations.every(relation =>
@@ -1052,6 +1054,7 @@ module.exports = {
   loadAndVerifyManifest,
   main,
   readConfig,
+  readSchemaShape,
   resetAdminInput,
   schemaConfirmation,
   sha256,

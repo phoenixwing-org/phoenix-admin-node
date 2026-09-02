@@ -31,7 +31,7 @@ uploaded → verified → staged → migrated → installed → enabled
 - 首版只接受受控重启激活，不接受动态执行模式。
 - 卸载必须提供备份标识，并固定 `dataRetained=true`；当前没有永久清除接口。
 - 畸形 HTTP JSON 只形成校验错误，不应导致校验器运行时异常。
-- `hostReuse` 只能声明 Host 公开的身份、用户、部门、角色、菜单、字典、文件、任务、审计、参数和备份能力；`identity` 的公开契约与迁移状态见 [Pah统一身份契约.md](Pah统一身份契约.md)，声明不等于能力已经实现。
+- `hostReuse` 只能声明 Host 公开的身份、用户、部门、角色、菜单、字典、文件、任务、审计、参数和备份能力；`identity` 的公开契约与迁移状态见 [Pah统一身份契约.md](Pah统一身份契约.md)。`files` 已具备 v1 描述符、认证内容与通用绑定契约，见 [Phoenix Host Files v1契约.md](Phoenix%20Host%20Files%20v1契约.md)；其他声明仍不自动代表运行能力已经实现。
 - Host 只登记插件声明，不把任一产品的业务实现写死到后端。
 
 ## 导航、授权与迁移台账
@@ -52,6 +52,13 @@ uploaded → verified → staged → migrated → installed → enabled
 - Pah manifest 可为字典项声明 `tags`、`enabled` 和可定制字段。`GET /admin/phoenix/plugin/dictionary-plan` 只生成计划；Host 管理员以计划指纹确认后，`POST /admin/phoenix/plugin/dictionary-reconcile` 在 `SERIALIZABLE` 事务中补齐缺失项和治理元数据，并写审计台账。
 - 系统“数据管理 → 字典维护”只执行幂等 reconcile，不执行 DDL，不覆盖管理员自定义名称、排序、额外标签或未知字典项。再次 dry-run 应为零变更；编辑和停用仍回到 Cool 字典管理页。
 - Host schema `0002-dictionary-governance.sql` 负责新增治理列和索引；必须先完成 dry-run、可信备份与隔离 PostgreSQL 恢复演练，再在受控发布窗口执行。普通页面按钮不得执行 `ALTER TABLE`。
+
+## Host Files v1
+
+- 插件声明 `hostReuse: ["files"]` 后，仍须按 `<moduleId>:files:read|write|admin` 分别声明 Host 固定 endpoint；不能通过 Files capability 借用其他 Host API。
+- 每次请求都重新校验插件处于 enabled、目标 owner、manifest capability 和当前角色。URL 中的 `ownerModuleId` 不能单独作为授权依据。
+- 插件只能保存 Host `fileId` / `bindingId`；不得读取 storage key、拼接 `/upload` URL或把 `space_info` 当作 Files 描述符。
+- 内容读取始终经过认证 API、完整性复检和 no-sniff 响应；删除、解绑和后续 retention/GC 是不同动作。
 
 ## 本地验收
 

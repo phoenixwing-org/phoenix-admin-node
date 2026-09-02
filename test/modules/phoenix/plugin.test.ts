@@ -21,6 +21,10 @@ import {
   validatePhoenixPluginManifest,
 } from '../../../src/modules/phoenix/interface/plugin';
 import {
+  PAH_FILES_CAPABILITY_ENDPOINTS,
+  pahFilesCapabilityId,
+} from '../../../src/modules/phoenix/interface/files';
+import {
   PAH_BUILTIN_NAVIGATION_GROUPS,
   PAH_BUSINESS_NAVIGATION_GROUP_KEY,
   PahNavigationService,
@@ -193,6 +197,54 @@ describe('Pah 插件契约', () => {
     input.hostReuse.push('shell' as any);
     expect(validatePhoenixPluginManifest(input).errors).toContain(
       '未知 Host 复用能力：shell'
+    );
+  });
+
+  it('Files capability 只接受固定完整 endpoint 集与对应风险等级', () => {
+    const input = manifest();
+    input.capabilities.push({
+      id: pahFilesCapabilityId(MODULE_ID, 'read'),
+      description: '读取 Host 文件',
+      risk: 'read',
+      endpoints: [...PAH_FILES_CAPABILITY_ENDPOINTS.read],
+    });
+    expect(validatePhoenixPluginManifest(input)).toEqual({
+      valid: true,
+      errors: [],
+    });
+
+    input.capabilities[input.capabilities.length - 1].endpoints = [
+      PAH_FILES_CAPABILITY_ENDPOINTS.read[0],
+    ];
+    expect(validatePhoenixPluginManifest(input).errors).toContain(
+      'Files capability 必须声明完整固定 endpoint 集：example-plugin:files:read'
+    );
+
+    input.capabilities[input.capabilities.length - 1] = {
+      id: pahFilesCapabilityId(MODULE_ID, 'admin'),
+      description: '管理 Host 文件',
+      risk: 'write',
+      endpoints: [...PAH_FILES_CAPABILITY_ENDPOINTS.admin],
+    };
+    expect(validatePhoenixPluginManifest(input).errors).toContain(
+      'Files capability 风险等级不匹配：example-plugin:files:admin'
+    );
+  });
+
+  it('Files endpoint 不能在未声明 hostReuse 时借用 Host 命名空间', () => {
+    const input = manifest();
+    input.hostReuse = input.hostReuse.filter(item => item !== 'files');
+    input.capabilities.push({
+      id: pahFilesCapabilityId(MODULE_ID, 'read'),
+      description: '读取 Host 文件',
+      risk: 'read',
+      endpoints: [...PAH_FILES_CAPABILITY_ENDPOINTS.read],
+    });
+    expect(validatePhoenixPluginManifest(input).errors).toEqual(
+      expect.arrayContaining([
+        'Files capability 必须声明 hostReuse: files：example-plugin:files:read',
+        '能力 endpoint 路径越界或不安全：/admin/phoenix/files/:ownerModuleId',
+      ])
     );
   });
 

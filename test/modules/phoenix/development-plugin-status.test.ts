@@ -1,14 +1,10 @@
-import {
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from 'fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'fs';
+import { createHash } from 'crypto';
 import { tmpdir } from 'os';
 import * as path from 'path';
 import { PAH_PLUGIN_FORMAT_VERSION } from '../../../src/modules/phoenix/interface/plugin';
 import { PahDevelopmentPluginStatusService } from '../../../src/modules/phoenix/service/development-plugin-status';
+import { retainVerifiedPluginPackage } from '../../../src/modules/phoenix/service/package-store';
 import * as startupHealth from '../../../src/modules/phoenix/service/startup-health';
 
 const MODULE_ID = 'example-plugin';
@@ -50,7 +46,11 @@ function manifest() {
     },
     apiPrefix: '/admin/example/',
     capabilities: [
-      { id: 'example:item:read', description: '查看示例', risk: 'read' as const },
+      {
+        id: 'example:item:read',
+        description: '查看示例',
+        risk: 'read' as const,
+      },
     ],
     resourcePolicies: [],
     auditCategories: [],
@@ -84,14 +84,14 @@ describe('开发插件就绪检测', () => {
       [vueRoot, 'phoenix-admin-vue'],
     ]) {
       mkdirSync(path.join(directory, 'src', 'modules'), { recursive: true });
-      writeFileSync(path.join(directory, 'package.json'), JSON.stringify({ name }));
+      writeFileSync(
+        path.join(directory, 'package.json'),
+        JSON.stringify({ name })
+      );
     }
     mkdirSync(webSource, { recursive: true });
     writeFileSync(path.join(webSource, 'config.ts'), 'export default {};\n');
-    symlinkSync(
-      webSource,
-      path.join(vueRoot, 'src', 'modules', MODULE_ID)
-    );
+    symlinkSync(webSource, path.join(vueRoot, 'src', 'modules', MODULE_ID));
     process.env.PHOENIX_ADMIN_NODE_ROOT = nodeRoot;
     process.env.PHOENIX_ADMIN_VUE_ROOT = vueRoot;
   });
@@ -103,7 +103,10 @@ describe('开发插件就绪检测', () => {
     process.env.PHOENIX_ADMIN_VUE_ROOT = originalVueRoot;
   });
 
-  function service(installation: any = null, options: { complete?: boolean } = {}) {
+  function service(
+    installation: any = null,
+    options: { complete?: boolean } = {}
+  ) {
     const value = manifest();
     jest.spyOn(startupHealth, 'inspectPhoenixPluginModules').mockReturnValue({
       plugins: [
@@ -123,9 +126,21 @@ describe('开发插件就绪检测', () => {
       ignoredDetectorPatterns: [],
     });
     const expectedContributions = [
-      { moduleId: MODULE_ID, contributionKey: 'navigation.module:example-workbench', menuId: 10 },
-      { moduleId: MODULE_ID, contributionKey: 'route:example-items', menuId: 11 },
-      { moduleId: MODULE_ID, contributionKey: 'capability:example:item:read', menuId: 12 },
+      {
+        moduleId: MODULE_ID,
+        contributionKey: 'navigation.module:example-workbench',
+        menuId: 10,
+      },
+      {
+        moduleId: MODULE_ID,
+        contributionKey: 'route:example-items',
+        menuId: 11,
+      },
+      {
+        moduleId: MODULE_ID,
+        contributionKey: 'capability:example:item:read',
+        menuId: 12,
+      },
     ];
     const contributions = options.complete
       ? expectedContributions
@@ -143,7 +158,11 @@ describe('开发插件就绪检测', () => {
       navigationAssignmentEntity: {
         findBy: jest
           .fn()
-          .mockResolvedValue(options.complete ? [{ targetKey: `plugin:${MODULE_ID}:example-workbench` }] : []),
+          .mockResolvedValue(
+            options.complete
+              ? [{ targetKey: `plugin:${MODULE_ID}:example-workbench` }]
+              : []
+          ),
       },
       baseSysMenuEntity: {
         findBy: jest
@@ -155,7 +174,7 @@ describe('开发插件就绪检测', () => {
     return result;
   }
 
-  it('把双端挂载但无 Pah 记录判定为待选择不可变包', async () => {
+  it('把双端挂载但无插件中心记录判定为待选择不可变包', async () => {
     const result = await service().inspect();
 
     expect(result.authority).toBe('pah-node');
@@ -165,6 +184,50 @@ describe('开发插件就绪检测', () => {
         readiness: expect.objectContaining({
           state: 'mounted-unregistered',
           nextAction: 'choose-package',
+          reason: '开发源码已挂载，但 Phoenix 插件中心尚未登记该插件',
+        }),
+      })
+    );
+    expect(JSON.stringify(result)).not.toContain(root);
+  });
+
+  it('已保留匹配开发源码的包时返回文件名和恢复启用动作', async () => {
+    const packageBytes = Buffer.from('verified phoenix package');
+    const packageSha256 = createHash('sha256')
+      .update(packageBytes)
+      .digest('hex');
+    retainVerifiedPluginPackage({
+      moduleId: MODULE_ID,
+      version: '0.1.0',
+      filename: 'example-plugin-0.1.0.phoenix.cool',
+      packageSha256,
+      packageBytes,
+      sourceCommit: 'a'.repeat(40),
+    });
+    const otherPackageBytes = Buffer.from('other verified phoenix package');
+    retainVerifiedPluginPackage({
+      moduleId: MODULE_ID,
+      version: '0.1.0',
+      filename: 'example-plugin-0.1.0-other.phoenix.cool',
+      packageSha256: createHash('sha256')
+        .update(otherPackageBytes)
+        .digest('hex'),
+      packageBytes: otherPackageBytes,
+      sourceCommit: 'b'.repeat(40),
+    });
+
+    const result = await service().inspect();
+
+    expect(result.plugins[0]).toEqual(
+      expect.objectContaining({
+        retainedPackage: expect.objectContaining({
+          filename: 'example-plugin-0.1.0.phoenix.cool',
+          packageSha256,
+          matchesMount: true,
+        }),
+        readiness: expect.objectContaining({
+          state: 'mounted-unregistered',
+          nextAction: 'restore-package',
         }),
       })
     );

@@ -127,6 +127,23 @@ export class PahPluginController extends BaseController {
     );
   }
 
+  @Post('/retained-package/restore', {
+    summary: '重新校验并装配 Host 已保留的 Phoenix 插件包',
+  })
+  async restoreRetainedPackage(
+    @Body('moduleId') moduleId: string,
+    @Body('version') version: string,
+    @Body('packageSha256') packageSha256: string
+  ) {
+    return this.ok(
+      await this.pahPluginPackageService.restoreRetainedPackage(
+        moduleId,
+        version,
+        packageSha256
+      )
+    );
+  }
+
   @Post('/local-backup', { summary: '创建并恢复演练本地插件可信备份' })
   async localBackup(@Body('moduleId') moduleId: string) {
     return this.ok(

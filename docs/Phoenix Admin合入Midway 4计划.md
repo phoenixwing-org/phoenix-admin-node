@@ -52,7 +52,8 @@ Cool Admin Node、纯 Vue 8.x、Midway、PostgreSQL、Hub 和跨平台验证，�
 
 2026-08-12 已在当前 `develop` 上完成等价补丁叠加，没有 merge 纯候选分支：
 
-- Phoenix 包名与 `0.2.2` 产品版本保持不变，Cool `8.x` 仍只是上游兼容基线；
+- 当时 Phoenix 包名与 `0.2.2` 产品版本保持不变；后续 Host 能力归档已独立提升为
+  `0.3.0`，Cool `8.x` 仍只是上游兼容基线；
 - 直接 Midway 依赖统一为 `4.2.1`，Node 最低版本提升到 20，pnpm 仍为 10；
 - 显式启用 CommonJS detector，并完成 `@MainApp`、延迟容器解析、请求作用域和 type-only
   metadata 适配；

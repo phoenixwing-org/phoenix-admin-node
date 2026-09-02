@@ -13,7 +13,7 @@ describe('Midway 4 compatibility baseline', () => {
 
     expect(packageJson.engines.node).toBe('>=20.0.0');
     expect(packageJson.name).toBe('phoenix-admin-node');
-    expect(packageJson.version).toBe('0.2.2');
+    expect(packageJson.version).toBe('0.3.0');
     const midwayDependencies = Object.entries(packageJson.dependencies).filter(
       ([name]) => name.startsWith('@midwayjs/')
     );
@@ -167,7 +167,7 @@ describe('Midway 4 compatibility baseline', () => {
 
     expect(welcome).toContain('Midway 4.2.1');
     expect(welcome).toContain('Phoenix Admin Node');
-    expect(welcome).toContain('<dt>VERSION</dt><dd>0.2.2</dd>');
+    expect(welcome).toContain('<dt>VERSION</dt><dd>0.3.0</dd>');
     expect(welcome).toContain('https://midwayjs.org/');
     expect(welcome).toContain('https://github.com/midwayjs/midway');
   });

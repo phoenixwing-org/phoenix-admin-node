@@ -2,6 +2,11 @@ import {
   PahPublicLoginBrandingUiContributions,
   validatePahPublicLoginBrandingContributions,
 } from './public-login-branding';
+import {
+  hasCompletePahFilesEndpointSet,
+  isPahFilesCapabilityEndpoint,
+  pahFilesCapabilityKind,
+} from './files';
 
 export const PAH_PLUGIN_FORMAT_VERSION = 2 as const;
 
@@ -451,6 +456,35 @@ export function validatePhoenixPluginManifest(
     ) {
       errors.push(`能力 endpoints 不能为空：${String(capability?.id ?? '')}`);
     }
+    const filesKind =
+      capability && typeof capability === 'object' && isText(capability.id)
+        ? pahFilesCapabilityKind(moduleId, capability.id)
+        : null;
+    if (filesKind) {
+      if (
+        !Array.isArray(input.hostReuse) ||
+        !input.hostReuse.includes('files')
+      ) {
+        errors.push(
+          `Files capability 必须声明 hostReuse: files：${capability.id}`
+        );
+      }
+      if (capability.risk !== filesKind) {
+        errors.push(`Files capability 风险等级不匹配：${capability.id}`);
+      }
+      if (
+        Array.isArray(capability.endpoints) &&
+        !hasCompletePahFilesEndpointSet(
+          moduleId,
+          capability.id,
+          capability.endpoints
+        )
+      ) {
+        errors.push(
+          `Files capability 必须声明完整固定 endpoint 集：${capability.id}`
+        );
+      }
+    }
     for (const endpoint of capability?.endpoints ?? []) {
       if (
         !endpoint ||
@@ -464,7 +498,13 @@ export function validatePhoenixPluginManifest(
       if (
         !endpoint ||
         typeof endpoint !== 'object' ||
-        !isSafeCapabilityEndpointPath(endpoint.path, input.apiPrefix ?? '')
+        !(
+          isSafeCapabilityEndpointPath(endpoint.path, input.apiPrefix ?? '') ||
+          (filesKind &&
+            Array.isArray(input.hostReuse) &&
+            input.hostReuse.includes('files') &&
+            isPahFilesCapabilityEndpoint(moduleId, capability.id, endpoint))
+        )
       ) {
         errors.push(
           `能力 endpoint 路径越界或不安全：${String(

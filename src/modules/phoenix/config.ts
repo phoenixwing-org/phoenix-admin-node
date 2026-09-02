@@ -1,4 +1,5 @@
 import { ModuleConfig } from '@cool-midway/core';
+import * as path from 'path';
 
 /**
  * Phoenix Admin Host 模块配置。
@@ -25,6 +26,12 @@ export default () => {
     middlewares: [],
     globalMiddlewares: [],
     order: 5,
+    files: {
+      root: path.resolve(
+        process.env.PAH_FILES_ROOT ||
+          path.join(process.cwd(), '.runtime', 'pah-files')
+      ),
+    },
     identity: {
       frontendOrigin:
         process.env.PAH_ADMIN_WEB_ORIGIN || 'http://127.0.0.1:9000',

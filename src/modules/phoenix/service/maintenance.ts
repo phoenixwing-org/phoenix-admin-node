@@ -43,7 +43,7 @@ export type PhoenixMaintenancePlan = {
 const DICTIONARY_OPERATION = Object.freeze({
   operationId: PHOENIX_DICTIONARY_MENU_ROUTE_OPERATION_ID,
   title: '升级字典维护入口',
-  description: '将旧 Pah 字典菜单路由与 View 路径等幂迁移到 Phoenix 规范入口。',
+  description: '将旧版字典菜单路由与 View 路径等幂迁移到 Phoenix 规范入口。',
   source: 'host' as const,
 });
 

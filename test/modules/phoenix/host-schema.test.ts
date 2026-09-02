@@ -18,7 +18,7 @@ describe('Pah Host schema 制品', () => {
       expect.objectContaining({
         formatVersion: 1,
         schemaId: 'pah-host',
-        version: 4,
+        version: 5,
       })
     );
     expect(descriptor.migrations.map(item => item.path).sort()).toEqual(
@@ -66,8 +66,36 @@ describe('Pah Host schema 制品', () => {
     expect(sql).toContain('UQ_pah_oauth_login_attempt_state');
     expect(sql).toContain('UQ_pah_oauth_login_ticket_hash');
     expect(sql).toContain('REFERENCES base_sys_user(id) ON DELETE RESTRICT');
+    expect(sql).toContain("conrelid = 'pah_external_identity'::regclass");
+    expect(sql).toContain('ALTER TABLE pah_external_identity');
+    expect(sql).toContain('ADD CONSTRAINT "CHK_pah_external_identity_status"');
+    expect(sql).toContain('ADD CONSTRAINT "FK_pah_oauth_login_ticket_identity"');
     expect(sql).toContain('incompatible definitions');
     expect(sql).not.toMatch(/access[_ ]?token|refresh[_ ]?token/i);
+  });
+
+  it('Host Files v1 迁移建立描述符、绑定与无内容审计边界', () => {
+    const sql = readFileSync(
+      path.join(pahRoot, 'schema/0005-host-files-v1.sql'),
+      'utf8'
+    );
+
+    expect(sql).toContain('CREATE TABLE IF NOT EXISTS pah_file_descriptor');
+    expect(sql).toContain('CREATE TABLE IF NOT EXISTS pah_file_binding');
+    expect(sql).toContain('CREATE TABLE IF NOT EXISTS pah_file_audit_record');
+    expect(sql).toContain('"ownerModuleId" character varying(128) NOT NULL');
+    expect(sql).toContain('"storageKey" text NOT NULL');
+    expect(sql).toContain('ON DELETE RESTRICT');
+    expect(sql).toContain('"UQ_pah_file_descriptor_file_owner"');
+    expect(sql).toContain(
+      'FOREIGN KEY ("fileId", "ownerModuleId")'
+    );
+    expect(sql).toContain('UQ_pah_file_binding_active_primary');
+    expect(sql).toContain('RENAME CONSTRAINT %I TO %I');
+    expect(sql).toContain("constraint_entry.table_name::regclass");
+    expect(sql).toContain("regexp_replace(\n               pg_get_indexdef");
+    expect(sql).toContain('incompatible definition');
+    expect(sql).not.toMatch(/base64|bytea|access[_ ]?token|refresh[_ ]?token/i);
   });
 
   it('字典治理迁移声明 enabled/tags/core/owner 并校验索引定义', () => {
@@ -94,6 +122,8 @@ describe('Pah Host schema 制品', () => {
     );
 
     expect(installer).toContain("schemaId !== 'pah-host'");
+    expect(installer).toContain("'src', 'modules', 'phoenix'");
+    expect(installer).not.toContain("'src', 'modules', 'pah'");
     expect(installer).toContain("/^schema\\/[0-9a-z-]+\\.sql$/u");
     expect(installer).toContain("createHash('sha256').update(sql)");
     expect(installer).toContain('BEGIN ISOLATION LEVEL SERIALIZABLE');

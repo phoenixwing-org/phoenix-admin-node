@@ -13,6 +13,7 @@ import {
 
 const execFileAsync = promisify(execFile);
 const LOCAL_BACKUP_MAX_AGE_MS = 60 * 60 * 1000;
+const LOCAL_BACKUP_FILE_MODE = 0o600;
 
 interface LocalBackupRecord {
   proof: PahMigrationBackupProof;
@@ -134,6 +135,17 @@ export class PahLocalPluginBackupService {
       commandEnv
     );
 
+    try {
+      await fs.writeFile(backupPath, Buffer.alloc(0), {
+        flag: 'wx',
+        mode: LOCAL_BACKUP_FILE_MODE,
+      });
+    } catch {
+      throw new CoolCommException(
+        '无法以 0600 排他创建本地备份文件；未执行备份'
+      );
+    }
+
     let stage = '创建 PostgreSQL 自定义格式备份';
     try {
       await this.commandRunner(
@@ -149,6 +161,15 @@ export class PahLocalPluginBackupService {
         ],
         { cwd: nodeRoot, env: commandEnv }
       );
+      stage = '收紧本地备份文件权限';
+      await fs.chmod(backupPath, LOCAL_BACKUP_FILE_MODE);
+      const backupStat = await fs.stat(backupPath);
+      if (
+        !backupStat.isFile() ||
+        (backupStat.mode & 0o777) !== LOCAL_BACKUP_FILE_MODE
+      ) {
+        throw new Error('backup file mode is not 0600');
+      }
       stage = '校验 PostgreSQL 备份目录';
       await this.commandRunner(
         postgresTools.pgRestore,

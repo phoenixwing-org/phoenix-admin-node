@@ -177,6 +177,7 @@ describe('Phoenix 插件包本地装配', () => {
   const originalSynchronize = process.env.PAH_DB_SYNCHRONIZE;
   const originalInitialize = process.env.PAH_DB_INITIALIZE;
   const originalLocalPackageMode = process.env.PAH_LOCAL_PACKAGE_MODE;
+  const originalPackageStoreRoot = process.env.PAH_PLUGIN_PACKAGE_STORE_ROOT;
   const postgresEnvironmentKeys = [
     'PAH_POSTGRES_SERVER_MAJOR',
     'PAH_POSTGRES_BIN',
@@ -225,6 +226,10 @@ describe('Phoenix 插件包本地装配', () => {
     process.env.PAH_DB_DATABASE = 'phoenix_admin_plugin_package_test';
     process.env.PAH_DB_SYNCHRONIZE = 'false';
     process.env.PAH_DB_INITIALIZE = 'false';
+    process.env.PAH_PLUGIN_PACKAGE_STORE_ROOT = path.join(
+      root,
+      'package-store'
+    );
     delete process.env.PAH_LOCAL_PACKAGE_MODE;
     for (const key of postgresEnvironmentKeys) delete process.env[key];
   });
@@ -241,6 +246,11 @@ describe('Phoenix 插件包本地装配', () => {
       delete process.env.PAH_LOCAL_PACKAGE_MODE;
     } else {
       process.env.PAH_LOCAL_PACKAGE_MODE = originalLocalPackageMode;
+    }
+    if (originalPackageStoreRoot === undefined) {
+      delete process.env.PAH_PLUGIN_PACKAGE_STORE_ROOT;
+    } else {
+      process.env.PAH_PLUGIN_PACKAGE_STORE_ROOT = originalPackageStoreRoot;
     }
     for (const [key, value] of originalPostgresEnvironment) {
       if (value === undefined) delete process.env[key];
@@ -285,12 +295,20 @@ describe('Phoenix 插件包本地装配', () => {
     const packagePath = path.join(root, 'example-plugin.phoenix.cool');
     createPackage(packagePath);
     const { service, register } = packageService();
+    let entitiesExistedAtRegistration = false;
+    register.mockImplementationOnce(async () => {
+      entitiesExistedAtRegistration = existsSync(
+        path.join(root, 'node', 'src', 'entities.plugin.ts')
+      );
+      return { moduleId: MODULE_ID, state: 'verified' };
+    });
 
     const result = await service.installLocalPackage({
       data: packagePath,
       filename: path.basename(packagePath),
     });
 
+    expect(entitiesExistedAtRegistration).toBe(false);
     expect(register).toHaveBeenCalledWith(
       expect.objectContaining({ moduleId: MODULE_ID, version: '0.1.0' })
     );
@@ -300,6 +318,13 @@ describe('Phoenix 插件包本地装配', () => {
         version: '0.1.0',
         fileCount: 6,
         restartRequired: true,
+        retainedPackage: expect.objectContaining({
+          filename: 'example-plugin.phoenix.cool',
+          moduleId: MODULE_ID,
+          version: '0.1.0',
+          size: expect.any(Number),
+          packageSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+        }),
         validationChecks: expect.arrayContaining([
           expect.objectContaining({ id: 'archive-safety' }),
           expect.objectContaining({ id: 'root-contract' }),
@@ -310,6 +335,21 @@ describe('Phoenix 插件包本地装配', () => {
         ]),
       })
     );
+    const retained = result.retainedPackage;
+    const retainedRoot = path.join(root, 'package-store', MODULE_ID, '0.1.0');
+    const retainedPackageFile = path.join(
+      retainedRoot,
+      `${retained.packageSha256}.phoenix.cool`
+    );
+    expect(readFileSync(retainedPackageFile)).toEqual(
+      readFileSync(packagePath)
+    );
+    expect(fs.statSync(retainedPackageFile).mode & 0o777).toBe(0o600);
+    expect(
+      fs.statSync(
+        path.join(retainedRoot, `${retained.packageSha256}.json`)
+      ).mode & 0o777
+    ).toBe(0o600);
     expect(
       existsSync(path.join(root, 'node', 'src/modules', MODULE_ID, 'config.ts'))
     ).toBe(true);
@@ -335,14 +375,52 @@ describe('Phoenix 插件包本地装配', () => {
     expect(
       JSON.parse(
         readFileSync(
-          pahPluginActivationCandidateFile(
-            path.join(root, 'node'),
-            MODULE_ID
-          ),
+          pahPluginActivationCandidateFile(path.join(root, 'node'), MODULE_ID),
           'utf8'
         )
       ).packageSha256
     ).toBe(result.packageSha256);
+  });
+
+  it('可从 Admin 包仓重新校验同一不可变包并恢复候选', async () => {
+    const packagePath = path.join(root, 'example-plugin.phoenix.cool');
+    createPackage(packagePath);
+    const { service, register } = packageService();
+    const uploaded = await service.installLocalPackage({
+      data: packagePath,
+      filename: path.basename(packagePath),
+    });
+    rmSync(
+      pahPluginActivationCandidateFile(path.join(root, 'node'), MODULE_ID),
+      { force: true }
+    );
+    rmSync(
+      pahPluginActivationCandidateFile(path.join(root, 'vue'), MODULE_ID),
+      { force: true }
+    );
+
+    const restored = await service.restoreRetainedPackage(
+      MODULE_ID,
+      '0.1.0',
+      uploaded.packageSha256
+    );
+
+    expect(restored).toEqual(
+      expect.objectContaining({
+        moduleId: MODULE_ID,
+        version: '0.1.0',
+        packageSha256: uploaded.packageSha256,
+        restartRequired: false,
+      })
+    );
+    expect(register).toHaveBeenCalledTimes(2);
+    for (const runtime of ['node', 'vue']) {
+      expect(
+        existsSync(
+          pahPluginActivationCandidateFile(path.join(root, runtime), MODULE_ID)
+        )
+      ).toBe(true);
+    }
   });
 
   it('根目录契约一次报告缺失文件和旧 payload 布局', async () => {
@@ -436,7 +514,7 @@ describe('Phoenix 插件包本地装配', () => {
     ).resolves.toEqual(expect.objectContaining({ moduleId: MODULE_ID }));
   });
 
-  it('local 环境只在双端开发 symlink 与不可变包逐字节一致时登记', async () => {
+  it('local 环境只在双端开发 symlink 运行闭包一致时登记', async () => {
     const packagePath = path.join(root, 'example-plugin.phoenix.cool');
     createPackage(packagePath);
     const externalRoot = path.join(root, 'external-product');
@@ -456,6 +534,10 @@ describe('Phoenix 插件包本地装配', () => {
         mkdirSync(path.dirname(file), { recursive: true });
         writeFileSync(file, content);
       }
+      writeFileSync(
+        path.join(source, 'host-contract.test.ts'),
+        'export const developmentOnlyContract = true;\n'
+      );
       const modules = path.join(root, runtime, 'src', 'modules');
       mkdirSync(modules, { recursive: true });
       symlinkSync(source, path.join(modules, MODULE_ID));
@@ -476,9 +558,50 @@ describe('Phoenix 插件包本地装配', () => {
       )
     );
     expect(receipt.payloadMode).toBe('development');
-    expect(fs.lstatSync(path.join(root, 'node', 'src/modules', MODULE_ID)).isSymbolicLink()).toBe(
-      true
-    );
+    expect(
+      fs
+        .lstatSync(path.join(root, 'node', 'src/modules', MODULE_ID))
+        .isSymbolicLink()
+    ).toBe(true);
+  });
+
+  it('开发 symlink 存在包外运行文件时拒绝登记', async () => {
+    const packagePath = path.join(root, 'example-plugin.phoenix.cool');
+    createPackage(packagePath);
+    const externalRoot = path.join(root, 'external-product-with-runtime-extra');
+    const payloads = {
+      node: {
+        'config.ts': 'export default { module: "example-plugin" };\n',
+        'entity/item.ts': 'export class ExamplePluginItem {}\n',
+      },
+      vue: {
+        'config.ts': 'export default { module: "example-plugin" };\n',
+      },
+    } as const;
+    for (const runtime of ['node', 'vue'] as const) {
+      const source = path.join(externalRoot, runtime, MODULE_ID);
+      for (const [name, content] of Object.entries(payloads[runtime])) {
+        const file = path.join(source, name);
+        mkdirSync(path.dirname(file), { recursive: true });
+        writeFileSync(file, content);
+      }
+      writeFileSync(
+        path.join(source, 'runtime-extra.ts'),
+        'export const unexpectedRuntimeFile = true;\n'
+      );
+      const modules = path.join(root, runtime, 'src', 'modules');
+      mkdirSync(modules, { recursive: true });
+      symlinkSync(source, path.join(modules, MODULE_ID));
+    }
+    const { service, register } = packageService();
+
+    await expect(
+      service.installLocalPackage({
+        data: packagePath,
+        filename: path.basename(packagePath),
+      })
+    ).rejects.toThrow('本机 Host 已存在不同内容');
+    expect(register).not.toHaveBeenCalled();
   });
 
   it('登记失败时精确清理本次新建的品牌收据与 Host payload', async () => {
@@ -1088,6 +1211,7 @@ describe('Phoenix 插件包本地装配', () => {
         const fileIndex = args.indexOf('--file');
         if (fileIndex >= 0) {
           writeFileSync(args[fileIndex + 1], Buffer.from('verified-backup'));
+          fs.chmodSync(args[fileIndex + 1], 0o644);
         }
         return { stdout: '', stderr: '' };
       }),
@@ -1115,7 +1239,61 @@ describe('Phoenix 插件包本地装配', () => {
     expect(
       commands.slice(0, 6).filter(item => item.args.includes('--version'))
     ).toHaveLength(5);
+    expect(
+      fs.statSync(
+        path.join(
+          root,
+          'node',
+          '.runtime',
+          'backups',
+          'pah-local',
+          `${result.proof.backupId}.dump`
+        )
+      ).mode & 0o777
+    ).toBe(0o600);
     expect(service.latestProof(MODULE_ID, '0.1.0')).toEqual(result.proof);
+  });
+
+  it('无法收紧备份权限时安全失败且不保留归档', async () => {
+    process.env.PAH_PSQL_BIN = 'test-psql';
+    process.env.PAH_PG_DUMP_BIN = 'test-pg-dump';
+    process.env.PAH_PG_RESTORE_BIN = 'test-pg-restore';
+    process.env.PAH_CREATEDB_BIN = 'test-createdb';
+    process.env.PAH_DROPDB_BIN = 'test-dropdb';
+    const service = new PahLocalPluginBackupService();
+    Object.assign(service, {
+      backupGate: { registerVerifier: jest.fn() },
+      commandRunner: jest.fn(async (command: string, args: string[]) => {
+        if (args.length === 1 && args[0] === '--version') {
+          return { stdout: `${command} (PostgreSQL) 16.10\n`, stderr: '' };
+        }
+        if (command === 'test-psql') {
+          return { stdout: '160010\n', stderr: '' };
+        }
+        const fileIndex = args.indexOf('--file');
+        if (fileIndex >= 0) {
+          writeFileSync(args[fileIndex + 1], Buffer.from('unsafe-backup'));
+        }
+        return { stdout: '', stderr: '' };
+      }),
+    });
+    const chmod = jest
+      .spyOn(fs.promises, 'chmod')
+      .mockRejectedValueOnce(new Error('chmod denied'));
+
+    try {
+      await expect(
+        service.createVerifiedBackup(MODULE_ID, '0.1.0')
+      ).rejects.toThrow('收紧本地备份文件权限');
+    } finally {
+      chmod.mockRestore();
+    }
+    expect(
+      existsSync(path.join(root, 'node', '.runtime', 'backups', 'pah-local'))
+    ).toBe(true);
+    expect(
+      readdirSync(path.join(root, 'node', '.runtime', 'backups', 'pah-local'))
+    ).toEqual([]);
   });
 
   it('Windows 支持含空格的 bin 路径并在备份前检查五件套 exe', async () => {

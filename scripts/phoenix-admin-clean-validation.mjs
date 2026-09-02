@@ -160,7 +160,7 @@ async function inspectDatabase(options) {
 }
 
 function readPahHostSchema() {
-  const schemaRoot = path.join(nodeRoot, 'src', 'modules', 'pah');
+  const schemaRoot = path.join(nodeRoot, 'src', 'modules', 'phoenix');
   const descriptorPath = path.join(schemaRoot, 'pah-host-schema.json');
   const descriptor = JSON.parse(fs.readFileSync(descriptorPath, 'utf8'));
   if (

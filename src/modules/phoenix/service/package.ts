@@ -22,6 +22,10 @@ import { PahPluginService } from './plugin';
 import { PahPublicLoginBrandingService } from './public-login-branding';
 import { PahPluginRuntimeActivationService } from './runtime-activation';
 import { resolvePahHostRoots } from './runtime-host';
+import {
+  retainVerifiedPluginPackage,
+  retainedPluginPackage,
+} from './package-store';
 
 export { resolvePahHostRoots } from './runtime-host';
 
@@ -29,6 +33,8 @@ const PHOENIX_PACKAGE_SUFFIX = '.phoenix.cool';
 const MAX_PACKAGE_BYTES = 100 * 1024 * 1024;
 const forbiddenPackagePath =
   /(^|\/)(?:node_modules|test|tests|__tests__)(?:\/|$)|\.(?:test|spec)\.[cm]?[jt]sx?$|(^|\/)(?:vitest\.config|tsconfig\.fixture)|(^|\/)controlled-test-suite\.json$/;
+const developmentOnlyPayloadPath =
+  /(^|\/)(?:test|tests|__tests__)(?:\/|$)|\.(?:test|spec)\.[cm]?[jt]sx?$|(^|\/)(?:vitest\.config|tsconfig\.fixture)|(^|\/)controlled-test-suite\.json$/;
 
 interface UploadedFile {
   data?: string;
@@ -473,12 +479,25 @@ function payloadFiles(root: string, relative = ''): Map<string, string> {
   return result;
 }
 
-function samePayload(left: string, right: string) {
+function samePayload(
+  left: string,
+  right: string,
+  allowDevelopmentOnlyFiles = false
+) {
   const leftFiles = payloadFiles(left);
   const rightFiles = payloadFiles(right);
+  if (
+    ![...leftFiles].every(([name, digest]) => rightFiles.get(name) === digest)
+  ) {
+    return false;
+  }
+  const sourceOnlyFiles = [...rightFiles.keys()].filter(
+    name => !leftFiles.has(name)
+  );
   return (
-    leftFiles.size === rightFiles.size &&
-    [...leftFiles].every(([name, digest]) => rightFiles.get(name) === digest)
+    sourceOnlyFiles.length === 0 ||
+    (allowDevelopmentOnlyFiles &&
+      sourceOnlyFiles.every(name => developmentOnlyPayloadPath.test(name)))
   );
 }
 
@@ -690,6 +709,27 @@ export class PahPluginPackageService extends BaseService {
         `插件包校验未通过｜失败阶段：${progress.current}｜已通过：${passed}｜${message}`
       );
     }
+  }
+
+  async restoreRetainedPackage(
+    moduleId: string,
+    version: string,
+    packageSha256: string
+  ) {
+    this.requireLocalPackageMode();
+    const retained = retainedPluginPackage(moduleId, version, packageSha256);
+    if (!retained) {
+      throw new CoolCommException(
+        `Host 未保留 ${moduleId}@${version} 的指定插件包`
+      );
+    }
+    this.logger.info(
+      `[phoenix-plugin] retained package restore start module=${moduleId} version=${version} sha256=${packageSha256}`
+    );
+    return this.installLocalPackage({
+      data: retained.packageFile,
+      filename: retained.metadata.filename,
+    });
   }
 
   private async installValidatedLocalPackage(
@@ -946,7 +986,10 @@ export class PahPluginPackageService extends BaseService {
           manifest.moduleId
         );
         if (existsSync(target)) {
-          if (!samePayload(temporary, target)) {
+          const developmentMount =
+            process.env.NODE_ENV === 'local' &&
+            lstatSync(target).isSymbolicLink();
+          if (!samePayload(temporary, target, developmentMount)) {
             rmSync(operationRoot, { recursive: true, force: true });
             throw new CoolCommException(
               `本机 Host 已存在不同内容的 ${manifest.moduleId}；禁止覆盖测试装配`
@@ -992,13 +1035,22 @@ export class PahPluginPackageService extends BaseService {
 
     let brandingReceiptCreated = false;
     let restoreActivationCandidate: (() => void) | null = null;
+    let rollbackRetainedPackage: (() => void) | null = null;
     try {
+      const retained = retainVerifiedPluginPackage({
+        moduleId: manifest.moduleId,
+        version: manifest.version,
+        filename,
+        packageSha256,
+        packageBytes,
+        sourceCommit: metadata.source!.commit!,
+      });
+      rollbackRetainedPackage = retained.rollback;
       restoreActivationCandidate =
         this.pahPluginRuntimeActivationService.recordVerifiedPackage(
           manifest,
           packageSha256
         ).rollback;
-      syncHostRuntimeEntities(nodeRoot);
       const brandingReceipt =
         this.pahPublicLoginBrandingService.recordVerifiedPackage(
           manifest,
@@ -1007,6 +1059,10 @@ export class PahPluginPackageService extends BaseService {
         );
       brandingReceiptCreated = brandingReceipt.receiptCreated === true;
       const installation = await this.pahPluginService.register(manifest);
+      // 实体清单属于会触发开发 watcher 重启的运行制品。必须先持久化
+      // verified 登记，确保进程在清单写入后被重启时可以从确定状态续跑，
+      // 而不是留下只有 activation candidate、没有安装记录的半成品。
+      syncHostRuntimeEntities(nodeRoot);
       const developmentMount = staged.every(
         item => item.reused && lstatSync(item.target).isSymbolicLink()
       );
@@ -1019,6 +1075,7 @@ export class PahPluginPackageService extends BaseService {
         name: manifest.name,
         fileCount: entries.size,
         packageSha256,
+        retainedPackage: retained.metadata,
         restartRequired:
           staged.some(item => item.installed) || developmentMount,
         validationChecks: [
@@ -1037,6 +1094,7 @@ export class PahPluginPackageService extends BaseService {
       };
     } catch (error) {
       restoreActivationCandidate?.();
+      rollbackRetainedPackage?.();
       if (brandingReceiptCreated) {
         this.pahPublicLoginBrandingService.removeVerifiedPackageReceipt(
           manifest.moduleId,

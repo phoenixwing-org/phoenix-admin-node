@@ -2,7 +2,7 @@
 
 Phoenix Admin Host 的 Node.js 后端宿主。仓库以 Cool Admin `8.x` 为固定上游兼容基线，运行于 Midway `4.2.1`，承载统一登录、用户、部门、系统角色、菜单、系统能力与审计。
 
-Phoenix Admin Node 采用独立产品版本线，当前版本为 `0.2.2`；Cool Admin `8.x` 仅表示上游代码兼容基线，不作为 Phoenix 产品版本。当前发布范围见 [0.2.2 发布说明](docs/releases/0.2.2.md)。
+Phoenix Admin Node 采用独立产品版本线，当前版本为 `0.3.0`；Cool Admin `8.x` 仅表示上游代码兼容基线，不作为 Phoenix 产品版本。当前发布范围见 [0.3.0 发布说明](docs/releases/0.3.0.md)。
 
 > 本仓库是 PhoenixWing 维护的 MIT 分叉，不是 Cool Admin 官方发行物。原 Cool Admin 版权、MIT 许可和 Git 历史完整保留。
 
