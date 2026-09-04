@@ -93,7 +93,7 @@ Midway 当前文档、功能和修复以 4.x 为主要目标。完成升级后�
 纯 Vue worktree 位于联调目录：
 
 ```text
-<workspace>/.worktrees/cool-admin-midway4/vue
+<workspace>/worktrees/cool-admin-midway4/vue
 ```
 
 它严格来自 `8.x@a2d4ee9bbfd6bfce880382f0bf6f8dd8f3397a2d`，只补充 pnpm 根工作区

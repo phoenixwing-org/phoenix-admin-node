@@ -15,10 +15,10 @@
 
 | 项目 | 冻结值 |
 | --- | --- |
-| Node worktree | `<workspace>/.worktrees/phoenix-admin-clean-validation/node` |
+| Node worktree | `<workspace>/worktrees/phoenix-admin-clean-validation/node` |
 | Node 分支 | `codex/admin-clean-install-node` |
 | Node 阶段提交 | `241bc53230efbc2288d843f2f40c65e435651150` |
-| Vue worktree | `<workspace>/.worktrees/phoenix-admin-clean-validation/vue` |
+| Vue worktree | `<workspace>/worktrees/phoenix-admin-clean-validation/vue` |
 | Vue 分支 | `codex/admin-clean-install-vue` |
 | Vue 阶段提交 | `bf6795fe207029b189ad0910361a184375e4cb10` |
 | 数据库 | `phoenix_admin_clean_validation_20260805` |

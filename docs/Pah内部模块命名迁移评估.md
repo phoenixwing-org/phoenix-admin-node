@@ -30,8 +30,8 @@ API 已经是 `/admin/phoenix/plugin`。因此当前没有为了品牌展示而�
 | Phoenix Hub     | `7759c238c08e6b7a213de3caedbdc7d0186da331` | clean                                             |
 | Phoenix Branding    | `22bde2bd39a6ecf7143f12ea9f51e11237a8ca37` | clean                                             |
 
-独立 worktree 为 `<workspace>/.worktrees/phoenix-admin-generated-entities`。本轮没有读取或
-写入 `<workspace>/.worktrees/phoenix-admin-clean-validation/{node,vue}`，也没有干扰其
+独立 worktree 为 `<workspace>/worktrees/phoenix-admin-generated-entities`。本轮没有读取或
+写入 `<workspace>/worktrees/phoenix-admin-clean-validation/{node,vue}`，也没有干扰其
 9100/8201 插件安装验证服务。
 
 以下数量是上述提交上的 `rg` 静态命中，用于估算影响面，不作为待改文件的机械清单：

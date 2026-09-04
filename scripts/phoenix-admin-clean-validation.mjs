@@ -9,7 +9,8 @@ import pg from 'pg';
 import { fileURLToPath } from 'node:url';
 
 const { Client } = pg;
-const scriptRoot = path.dirname(fileURLToPath(import.meta.url));
+const scriptPath = fileURLToPath(import.meta.url);
+const scriptRoot = path.dirname(scriptPath);
 const nodeRoot = path.resolve(scriptRoot, '..');
 const managedChildren = new Set();
 let shuttingDown = false;
@@ -109,6 +110,36 @@ function connection(options, database) {
     database,
     connectionTimeoutMillis: 5_000,
   };
+}
+
+export function cleanValidationApiEnvironment(commonApiEnv, initialize) {
+  const enabled = initialize ? 'true' : 'false';
+  return {
+    ...commonApiEnv,
+    NODE_ENV: 'local',
+    PAH_DEV_DISABLE_CAPTCHA: 'true',
+    PAH_DB_SYNCHRONIZE: enabled,
+    PAH_DB_INITIALIZE: enabled,
+  };
+}
+
+function epsEntries(data) {
+  if (Array.isArray(data)) return data;
+  if (!data || typeof data !== 'object') return [];
+  return Object.values(data).flatMap(value =>
+    Array.isArray(value) ? value : [value]
+  );
+}
+
+export function hasRequiredAdminEps(payload) {
+  if (payload?.code !== 1000) return false;
+  const baseOpen = epsEntries(payload.data).find(
+    item => item?.prefix === '/admin/base/open'
+  );
+  const apiPaths = new Set(
+    Array.isArray(baseOpen?.api) ? baseOpen.api.map(item => item?.path) : []
+  );
+  return apiPaths.has('/eps') && apiPaths.has('/login');
 }
 
 async function ensureDatabase(options) {
@@ -231,6 +262,18 @@ function start(command, args, cwd, env) {
   return child;
 }
 
+function startCleanValidationApi(commonApiEnv, initialize) {
+  process.stdout.write(
+    `[clean-validation] API phase=${initialize ? 'initialize' : 'runtime'} mode=local eps=enabled synchronize=${initialize} initialize=${initialize}\n`
+  );
+  return start(
+    process.execPath,
+    ['bootstrap.js'],
+    nodeRoot,
+    cleanValidationApiEnvironment(commonApiEnv, initialize)
+  );
+}
+
 function stop(child) {
   if (!child?.pid || child.exitCode !== null) return;
   try {
@@ -256,18 +299,74 @@ async function waitFor(predicate, description, timeout = 120_000) {
 }
 
 async function waitForExit(child, timeout = 15_000) {
-  if (child.exitCode !== null) return;
-  await Promise.race([
-    new Promise(resolve => child.once('exit', resolve)),
-    new Promise(resolve => setTimeout(resolve, timeout)),
-  ]);
-  if (child.exitCode === null) {
-    try {
-      process.kill(-child.pid, 'SIGKILL');
-    } catch (error) {
-      if (error.code !== 'ESRCH') throw error;
-    }
+  if (!child?.pid) return;
+  if (await waitForProcessGroupExit(child.pid, timeout)) return;
+  try {
+    process.kill(-child.pid, 'SIGKILL');
+  } catch (error) {
+    if (error.code !== 'ESRCH') throw error;
   }
+  if (!(await waitForProcessGroupExit(child.pid, 5_000))) {
+    fail(`进程组 ${child.pid} 在 SIGKILL 后仍未退出`);
+  }
+}
+
+function processGroupExists(groupId) {
+  try {
+    process.kill(-groupId, 0);
+    return true;
+  } catch (error) {
+    if (error.code === 'ESRCH') return false;
+    throw error;
+  }
+}
+
+async function waitForProcessGroupExit(groupId, timeout) {
+  const started = Date.now();
+  while (Date.now() - started < timeout) {
+    if (!processGroupExists(groupId)) return true;
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  return !processGroupExists(groupId);
+}
+
+async function waitForAdminEps(url) {
+  return waitFor(async () => {
+    const response = await fetch(url, { redirect: 'manual' });
+    if (!response.ok) return undefined;
+    const payload = await response.json();
+    return hasRequiredAdminEps(payload) ? payload : undefined;
+  }, `${url} 返回可用的 Admin EPS`);
+}
+
+async function waitForInitializedDatabase(options) {
+  return waitFor(async () => {
+    const current = await inspectDatabase(options);
+    return current.state === 'ready' ? current : undefined;
+  }, 'Cool db.json/menu.json 初始化');
+}
+
+async function stopInitializedApi(child, options) {
+  stop(child);
+  await waitForExit(child);
+  return waitFor(async () => {
+    const current = await inspectDatabase(options);
+    return current.state === 'ready' ? current : undefined;
+  }, 'Cool 初始化进程退出后的数据库稳定性复核', 30_000);
+}
+
+async function stopAllManagedChildren() {
+  const children = [...managedChildren];
+  for (const child of children) stop(child);
+  await Promise.all(children.map(child => waitForExit(child)));
+}
+
+async function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  process.stdout.write(`\n收到 ${signal}，停止干净验收服务…\n`);
+  await stopAllManagedChildren();
+  process.exit(0);
 }
 
 async function waitForHttp(url) {
@@ -277,16 +376,7 @@ async function waitForHttp(url) {
   }, `${url} 就绪`);
 }
 
-async function shutdown(signal) {
-  if (shuttingDown) return;
-  shuttingDown = true;
-  process.stdout.write(`\n收到 ${signal}，停止干净验收服务…\n`);
-  const children = [...managedChildren];
-  for (const child of children) stop(child);
-  await Promise.all(children.map(child => waitForExit(child)));
-  process.exit(0);
-}
-
+/* c8 ignore start -- 以下为受控命令入口，纯函数由单元测试覆盖。 */
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   assertOptions(options);
@@ -317,31 +407,25 @@ async function main() {
 
   if (state.state === 'empty') {
     process.stdout.write(`数据库 ${options.database} 为空，使用 Cool 原生初始化流程…\n`);
-    const installer = start('pnpm', ['start'], nodeRoot, {
-      ...commonApiEnv,
-      PAH_DB_SYNCHRONIZE: 'true',
-      PAH_DB_INITIALIZE: 'true',
-    });
-    await waitFor(async () => {
-      const current = await inspectDatabase(options);
-      return current.state === 'ready' ? current : undefined;
-    }, 'Cool db.json/menu.json 初始化');
-    stop(installer);
-    await waitForExit(installer);
-    state = await inspectDatabase(options);
+    const installer = startCleanValidationApi(commonApiEnv, true);
+    await waitForHttp(`http://127.0.0.1:${options.apiPort}/index.html`);
+    await waitForAdminEps(
+      `http://127.0.0.1:${options.apiPort}/admin/base/open/eps`
+    );
+    await waitForInitializedDatabase(options);
+    state = await stopInitializedApi(installer, options);
   }
 
   if (state.state !== 'ready') fail('Phoenix Admin 干净基线验证失败');
   // Cool 原生初始化负责基础表、默认 admin、角色和菜单；Pah Host schema
-  // 随后等幂补齐架构治理字段、索引与 Host 自有表。正常运行阶段仍关闭
-  // synchronize/initDB/initMenu，不在普通服务启动时隐式执行 DDL。
+  // 只在初始化 API 完整 ready、进程组完全退出并复核数据库稳定后应用。
+  // 正常运行阶段仍关闭 synchronize/initDB/initMenu，不在服务启动时隐式执行 DDL。
   await applyPahHostSchema(options);
-  const api = start('pnpm', ['start'], nodeRoot, {
-    ...commonApiEnv,
-    PAH_DB_SYNCHRONIZE: 'false',
-    PAH_DB_INITIALIZE: 'false',
-  });
+  const api = startCleanValidationApi(commonApiEnv, false);
   await waitForHttp(`http://127.0.0.1:${options.apiPort}/index.html`);
+  await waitForAdminEps(
+    `http://127.0.0.1:${options.apiPort}/admin/base/open/eps`
+  );
 
   const web = start(
     'pnpm',
@@ -367,7 +451,10 @@ async function main() {
   });
 }
 
-main().catch(error => {
-  process.stderr.write(`干净验收启动失败：${error.message}\n`);
-  process.exitCode = 1;
-});
+if (process.argv[1] && path.resolve(process.argv[1]) === scriptPath) {
+  main().catch(error => {
+    process.stderr.write(`干净验收启动失败：${error.message}\n`);
+    process.exitCode = 1;
+  });
+}
+/* c8 ignore stop */

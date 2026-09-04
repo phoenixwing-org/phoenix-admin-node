@@ -1,6 +1,8 @@
 import { createHash } from 'crypto';
+import { execFileSync } from 'child_process';
 import { readFileSync, readdirSync } from 'fs';
 import * as path from 'path';
+import { pathToFileURL } from 'url';
 
 const pahRoot = path.resolve(__dirname, '../../../src/modules/phoenix');
 
@@ -116,10 +118,11 @@ describe('Pah Host schema 制品', () => {
   });
 
   it('干净安装在 Cool 初始化后等幂应用经过校验的 Host schema', () => {
-    const installer = readFileSync(
-      path.resolve(__dirname, '../../../scripts/phoenix-admin-clean-validation.mjs'),
-      'utf8'
+    const installerPath = path.resolve(
+      __dirname,
+      '../../../scripts/phoenix-admin-clean-validation.mjs'
     );
+    const installer = readFileSync(installerPath, 'utf8');
 
     expect(installer).toContain("schemaId !== 'pah-host'");
     expect(installer).toContain("'src', 'modules', 'phoenix'");
@@ -128,9 +131,53 @@ describe('Pah Host schema 制品', () => {
     expect(installer).toContain("createHash('sha256').update(sql)");
     expect(installer).toContain('BEGIN ISOLATION LEVEL SERIALIZABLE');
     expect(installer).toContain('pg_advisory_xact_lock');
+    expect(installer).toContain("NODE_ENV: 'local'");
+    expect(installer).toContain("['bootstrap.js']");
+    expect(installer).not.toContain("start('pnpm', ['start']");
+    expect(installer).toContain('await waitForAdminEps(');
+    expect(installer).toContain('await waitForProcessGroupExit(child.pid');
+    expect(installer.indexOf('state = await stopInitializedApi')).toBeLessThan(
+      installer.indexOf('await applyPahHostSchema(options);')
+    );
     expect(installer).toContain('await applyPahHostSchema(options);');
     expect(installer.indexOf('await applyPahHostSchema(options);')).toBeLessThan(
-      installer.indexOf("PAH_DB_SYNCHRONIZE: 'false'")
+      installer.indexOf(
+        'const api = startCleanValidationApi(commonApiEnv, false);'
+      )
+    );
+
+    const probe = JSON.parse(
+      execFileSync(
+        process.execPath,
+        [
+          '--input-type=module',
+          '--eval',
+          `const module = await import(${JSON.stringify(pathToFileURL(installerPath).href)});
+const runtime = module.cleanValidationApiEnvironment({ PAH_SERVER_PORT: '8201' }, false);
+const initialize = module.cleanValidationApiEnvironment({ PAH_SERVER_PORT: '8201' }, true);
+const valid = module.hasRequiredAdminEps({ code: 1000, data: [{ prefix: '/admin/base/open', api: [{ path: '/eps' }, { path: '/login' }] }] });
+const empty = module.hasRequiredAdminEps({ code: 1000, data: {} });
+process.stdout.write(JSON.stringify({ runtime, initialize, valid, empty }));`,
+        ],
+        { encoding: 'utf8' }
+      )
+    );
+    expect(probe).toEqual(
+      expect.objectContaining({
+        runtime: expect.objectContaining({
+          NODE_ENV: 'local',
+          PAH_DEV_DISABLE_CAPTCHA: 'true',
+          PAH_DB_SYNCHRONIZE: 'false',
+          PAH_DB_INITIALIZE: 'false',
+        }),
+        initialize: expect.objectContaining({
+          NODE_ENV: 'local',
+          PAH_DB_SYNCHRONIZE: 'true',
+          PAH_DB_INITIALIZE: 'true',
+        }),
+        valid: true,
+        empty: false,
+      })
     );
   });
 
