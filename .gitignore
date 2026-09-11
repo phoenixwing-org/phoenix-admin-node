@@ -8,7 +8,9 @@ yarn.lock
 coverage/
 dist/
 src/index.ts
+src/entities.plugin.ts
 .idea/
+.obsidian/
 run/
 .runtime/
 build/

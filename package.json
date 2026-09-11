@@ -1,6 +1,6 @@
 {
   "name": "phoenix-admin-node",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "packageManager": "pnpm@10.15.1",
   "description": "Phoenix Admin Host Node.js backend maintained from Cool Admin Midway 8.x",
   "private": true,
@@ -8,18 +8,18 @@
     "@cool-midway/core": "^8.0.7",
     "@cool-midway/rpc": "^8.0.2",
     "@cool-midway/task": "^8.0.2",
-    "@midwayjs/bootstrap": "^3.20.3",
-    "@midwayjs/cache-manager": "^3.20.3",
-    "@midwayjs/core": "^3.20.3",
-    "@midwayjs/cron": "^3.20.3",
-    "@midwayjs/cross-domain": "^3.20.3",
-    "@midwayjs/info": "^3.20.3",
-    "@midwayjs/koa": "^3.20.3",
-    "@midwayjs/logger": "^3.4.2",
-    "@midwayjs/static-file": "^3.20.3",
-    "@midwayjs/typeorm": "^3.20.3",
-    "@midwayjs/upload": "^3.20.3",
-    "@midwayjs/validate": "^3.20.3",
+    "@midwayjs/bootstrap": "^4.2.1",
+    "@midwayjs/cache-manager": "^4.2.1",
+    "@midwayjs/core": "^4.2.1",
+    "@midwayjs/cron": "^4.2.1",
+    "@midwayjs/cross-domain": "^4.2.1",
+    "@midwayjs/info": "^4.2.1",
+    "@midwayjs/koa": "^4.2.1",
+    "@midwayjs/logger": "^4.1.0",
+    "@midwayjs/static-file": "^4.2.1",
+    "@midwayjs/typeorm": "^4.2.1",
+    "@midwayjs/upload": "^4.2.1",
+    "@midwayjs/validate": "^4.2.1",
     "adm-zip": "^0.5.16",
     "axios": "^1.8.4",
     "cron": "^4.1.3",
@@ -38,7 +38,7 @@
   },
   "devDependencies": {
     "@midwayjs/bundle-helper": "^1.3.0",
-    "@midwayjs/mock": "^3.20.3",
+    "@midwayjs/mock": "^4.2.1",
     "@types/jest": "^29.5.14",
     "@types/node": "22",
     "@yao-pkg/pkg": "^6.3.2",
@@ -51,23 +51,37 @@
     "typescript": "~5.8.2"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "@cool-midway/core>@midwayjs/cache-manager": "^4.2.1"
+    },
+    "patchedDependencies": {
+      "@cool-midway/rpc@8.0.2": "patches/@cool-midway__rpc@8.0.2.patch",
+      "@cool-midway/core@8.0.8": "patches/@cool-midway__core@8.0.8.patch"
+    }
   },
   "scripts": {
     "start": "NODE_ENV=production node ./bootstrap.js",
-    "dev": "rimraf src/index.ts && cool check && cross-env NODE_ENV=local mwtsc --cleanOutDir --watch --run @midwayjs/mock/app.js --keepalive",
+    "dev": "rimraf src/index.ts && cool check && node scripts/pah-sync-runtime-entities.cjs && cross-env NODE_ENV=local PAH_DEV_DISABLE_CAPTCHA=true PAH_RUNTIME_ENTITIES_PREPARED=true mwtsc -p .runtime/tsconfig.phoenix.json --cleanOutDir --watch --run ./scripts/dev-midway4.js --keepalive",
+    "dev:midway4": "rimraf src/index.ts && node scripts/pah-sync-runtime-entities.cjs && cross-env NODE_ENV=midway4 PAH_RUNTIME_ENTITIES_PREPARED=true mwtsc -p .runtime/tsconfig.phoenix.json --cleanOutDir --watch --run ./scripts/dev-midway4.js --keepalive",
     "dev:plugin-installer": "pnpm run build && cross-env NODE_ENV=production PAH_LOCAL_PACKAGE_MODE=true PAH_DB_SYNCHRONIZE=false PAH_DB_INITIALIZE=false node bootstrap.js",
     "test": "cross-env NODE_ENV=unittest jest",
     "test:ci": "cross-env NODE_ENV=unittest jest --runInBand --passWithNoTests",
+    "test:midway4": "cross-env NODE_ENV=unittest node ./scripts/verify-midway4-runtime.js",
+    "entities:sync": "node scripts/pah-sync-runtime-entities.cjs",
+    "typecheck": "pnpm run entities:sync && tsc -p .runtime/tsconfig.phoenix.json --noEmit",
     "host:baseline": "node scripts/pah-host-baseline.cjs",
     "admin:clean-validation": "node scripts/phoenix-admin-clean-validation.mjs",
     "verify": "pnpm run lint && pnpm run test:ci && pnpm run build",
+    "verify:midway4": "pnpm run lint && pnpm run typecheck && pnpm run test:ci && pnpm run build && pnpm run test:midway4",
     "cov": "jest --coverage",
     "lint": "mwts check",
     "lint:fix": "mwts fix",
     "ci": "npm run cov",
-    "build": "cool entity && bundle && mwtsc --cleanOutDir && node scripts/copy-pah-plugin-artifacts.mjs",
-    "build:obfuscate": "cool entity && bundle && mwtsc --cleanOutDir && node scripts/copy-pah-plugin-artifacts.mjs && cool obfuscate",
+    "build": "pnpm run entities:sync && node scripts/pah-bundle-runtime.cjs && mwtsc -p .runtime/tsconfig.phoenix.json --cleanOutDir && node scripts/copy-pah-plugin-artifacts.mjs",
+    "build:obfuscate": "pnpm run entities:sync && node scripts/pah-bundle-runtime.cjs && mwtsc -p .runtime/tsconfig.phoenix.json --cleanOutDir && node scripts/copy-pah-plugin-artifacts.mjs && cool obfuscate",
     "pkg": "rimraf build && mkdir build && npm run build && pkg . -d > build/pkg.log",
     "pm2:start": "pm2 start ./bootstrap.js -i 1 --name phoenix-admin-node",
     "pm2:stop": "pm2 stop phoenix-admin-node & pm2 delete phoenix-admin-node"
@@ -85,10 +99,10 @@
       "dist/modules/*/pah-plugin.artifacts.json",
       "dist/modules/*/migrations/**/*.sql",
       "dist/modules/*/runtime/**/*.cjs",
-      "dist/modules/pah/pah-host-schema.json",
-      "dist/modules/pah/schema/**/*.sql",
-      "dist/modules/pah/host-baseline/**/*.json",
-      "dist/modules/pah/host-baseline/**/*.sql"
+      "dist/modules/phoenix/pah-host-schema.json",
+      "dist/modules/phoenix/schema/**/*.sql",
+      "dist/modules/phoenix/host-baseline/**/*.json",
+      "dist/modules/phoenix/host-baseline/**/*.sql"
     ],
     "targets": [
       "node20-win-x64"

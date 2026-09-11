@@ -16,6 +16,9 @@ const require = createRequire(import.meta.url);
 const { loadAndVerifyManifest: loadAndVerifyHostBaseline } = require(
   './pah-host-baseline.cjs'
 );
+const {
+  pruneIgnoredRuntimeModules,
+} = require('./pah-prune-ignored-runtime-modules.cjs');
 
 const descriptorName = 'pah-plugin.artifacts.json';
 const descriptorRuntimeArtifactKeys = [
@@ -30,6 +33,11 @@ const runtimeArtifactIdPattern = /^[a-z][a-z0-9-]{0,63}$/;
 const sha256Pattern = /^[a-f0-9]{64}$/;
 const sourceModules = path.resolve('src/modules');
 const targetModules = path.resolve('dist/modules');
+const pruneResult = pruneIgnoredRuntimeModules(process.cwd());
+const ignoredModuleIds = new Set(pruneResult.ignoredModuleIds);
+process.stdout.write(
+  `[phoenix-plugin-health] host=node phase=artifact-copy ignored=${ignoredModuleIds.size} removed=${pruneResult.removedModuleIds.length}\n`
+);
 const hostSchemaDescriptorName = 'pah-host-schema.json';
 const nodeBuiltinImports = new Set(
   builtinModules.flatMap(name => [name, name.startsWith('node:') ? name : `node:${name}`])
@@ -322,6 +330,7 @@ async function listPackagedRuntimeArtifacts(moduleId, moduleRoot, runtimeRoot) {
 
 for (const entry of await readdir(sourceModules, { withFileTypes: true })) {
   if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
+  if (ignoredModuleIds.has(entry.name)) continue;
   const moduleRoot = path.join(sourceModules, entry.name);
   const descriptorPath = path.join(moduleRoot, descriptorName);
   const migrationsPath = path.join(moduleRoot, 'migrations');
@@ -398,8 +407,8 @@ for (const entry of await readdir(sourceModules, { withFileTypes: true })) {
   }
 }
 
-const pahSourceRoot = path.join(sourceModules, 'pah');
-const pahTargetRoot = path.join(targetModules, 'pah');
+const pahSourceRoot = path.join(sourceModules, 'phoenix');
+const pahTargetRoot = path.join(targetModules, 'phoenix');
 const hostSchemaDescriptorPath = path.join(
   pahSourceRoot,
   hostSchemaDescriptorName

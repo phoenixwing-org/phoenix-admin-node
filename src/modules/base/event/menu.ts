@@ -1,7 +1,7 @@
 import { CoolEvent, CoolEventManager, Event } from '@cool-midway/core';
 import { BaseSysMenuService } from '../service/sys/menu';
 import {
-  App,
+  MainApp,
   ILogger,
   IMidwayApplication,
   Inject,
@@ -20,7 +20,7 @@ export class BaseMenuEvent {
   @Inject()
   baseSysMenuService: BaseSysMenuService;
 
-  @App()
+  @MainApp()
   app: IMidwayApplication;
 
   @Inject()

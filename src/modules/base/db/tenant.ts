@@ -8,7 +8,7 @@ import {
 } from 'typeorm';
 import * as _ from 'lodash';
 import {
-  App,
+  MainApp,
   ASYNC_CONTEXT_KEY,
   ASYNC_CONTEXT_MANAGER_KEY,
   AsyncContextManager,
@@ -40,7 +40,7 @@ export const noTenant = async (ctx, func) => {
 
 @EventSubscriberModel()
 export class TenantSubscriber implements EntitySubscriberInterface<any> {
-  @App()
+  @MainApp()
   app: IMidwayApplication;
 
   @Inject()

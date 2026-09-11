@@ -51,7 +51,7 @@ manifest 的每条迁移声明唯一 SQL 路径：
 
 ## 挂载与构建
 
-插件在自己的模块根提供稳定的编译制品描述符，不相对导入 Host `src/modules/pah`，也不在 Host 源码登记产品 ID：
+插件在自己的模块根提供稳定的编译制品描述符，不相对导入 Host `src/modules/phoenix`，也不在 Host 源码登记产品 ID：
 
 ```json
 {
@@ -89,7 +89,7 @@ postinstall，不搜索或复制插件 `node_modules`，也不联网安装产品
 消费侧固定采用“通用构建装配器自动发现”，不采用插件主动调用 Host service 或 IoC token：
 
 1. 插件仓维护 manifest v2、descriptor、实体和 `migrations/`；manifest 与 descriptor 的 `moduleId`/版本必须一致，`moduleId` 还必须与模块目录名一致；
-2. 插件源码不得通过相对路径导入 Host 的 `src/modules/pah`，也不得调用 `PahCompiledPluginRegistry.register()`；该方法只供 Host 内部装配和测试使用；
+2. 插件源码不得通过相对路径导入 Host 的 `src/modules/phoenix`，也不得调用 `PahCompiledPluginRegistry.register()`；该方法只供 Host 内部装配和测试使用；
 3. 受控构建把插件模块挂载到通用 `src/modules/<moduleId>` 槽位，装配器自动校验并复制制品；
 4. 运行时只以已登记 manifest 的 `moduleId` 查找同名编译输出，不扫描或执行插件提供的注册代码。
 
@@ -99,12 +99,16 @@ postinstall，不搜索或复制插件 `node_modules`，也不联网安装产品
 
 正式构建在插件源码被受控挂载到 `src/modules/<moduleId>` 后执行 `pnpm build`：
 
-1. `cool entity` 通用扫描 `src/modules/*/entity/**/*.ts` 并生成生产实体清单；
+1. `scripts/pah-sync-runtime-entities.cjs` 通用扫描 `src/modules/*/entity/**/*.ts`，只生成 ignored
+   的 `src/entities.plugin.ts`；tracked 的 `src/entities.ts` 是 Host 固定实体入口，只追加该动态清单，
+   安装、升级或卸载插件均不得改写固定入口；
 2. TypeScript 编译业务模块；
 3. `scripts/copy-pah-plugin-artifacts.mjs` 校验通用 descriptor，将 descriptor、所有 `src/modules/*/migrations` 与已声明 runtime artifacts 原样复制到 `dist/modules/*`；存在迁移或 runtime 制品但 descriptor 缺失、错配或校验失败时构建失败；
 4. 打包配置把 descriptor 和 SQL 作为资产包含。
 
-Host 仓不提交业务插件目录或产品路径。构建流水线挂载的业务源码、生成的产品实体导入和 SQL 只存在于受控构建工作区/产物；业务插件仓仍是源码真源。
+Host 仓不提交业务插件目录或产品路径。构建流水线挂载的业务源码、生成的产品实体 import 和 SQL
+只存在于受控构建工作区/产物；业务插件仓仍是源码真源。无插件、单插件、多插件和卸载后的冷构建
+都重新生成同一个 ignored 插件清单，挂载变化不会再改写长期 Host 固定入口。
 
 ## dry-run、安装与升级
 

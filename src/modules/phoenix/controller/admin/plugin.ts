@@ -1,0 +1,279 @@
+import {
+  Body,
+  Fields,
+  Files,
+  Get,
+  Inject,
+  Post,
+  Provide,
+  Query,
+} from '@midwayjs/core';
+import { BaseController, CoolController } from '@cool-midway/core';
+import { PahPluginInstallationEntity } from '../../entity/plugin';
+import { PahPluginManifest } from '../../interface/plugin';
+import { PahPluginService } from '../../service/plugin';
+import { PahPluginPackageService } from '../../service/package';
+import { PahPublicLoginBrandingService } from '../../service/public-login-branding';
+import { PahDevelopmentPluginStatusService } from '../../service/development-plugin-status';
+
+/** Phoenix 业务插件管理。 */
+@Provide()
+@CoolController({
+  prefix: '/admin/phoenix/plugin',
+  api: ['info', 'list', 'page'],
+  entity: PahPluginInstallationEntity,
+  service: PahPluginService,
+  pageQueryOp: {
+    fieldEq: ['moduleId', 'state'],
+    addOrderBy: { id: 'DESC' },
+  },
+})
+export class PahPluginController extends BaseController {
+  @Inject()
+  pahPluginService: PahPluginService;
+
+  @Inject()
+  pahPluginPackageService: PahPluginPackageService;
+
+  @Inject()
+  pahPublicLoginBrandingService: PahPublicLoginBrandingService;
+
+  @Inject()
+  pahDevelopmentPluginStatusService: PahDevelopmentPluginStatusService;
+
+  @Get('/development-status', {
+    summary: '检查开发挂载与 Pah 生命周期、Ribbon 投影状态',
+  })
+  async developmentStatus() {
+    return this.ok(await this.pahDevelopmentPluginStatusService.inspect());
+  }
+
+  @Get('/public-login-branding/status', {
+    summary: '查询当前公开登录品牌快照',
+  })
+  async publicLoginBrandingStatus() {
+    return this.ok(this.pahPublicLoginBrandingService.currentStatus());
+  }
+
+  @Post('/public-login-branding/select', {
+    summary: '选择已启用的公开登录品牌插件',
+  })
+  async selectPublicLoginBranding(
+    @Body('moduleId') moduleId: string,
+    @Body('expectedRevision') expectedRevision: string
+  ) {
+    return this.ok(
+      await this.pahPublicLoginBrandingService.select(
+        moduleId,
+        expectedRevision
+      )
+    );
+  }
+
+  @Post('/public-login-branding/reset', {
+    summary: '恢复 Host 默认公开登录品牌',
+  })
+  async resetPublicLoginBranding(
+    @Body('expectedRevision') expectedRevision: string
+  ) {
+    return this.ok(
+      await this.pahPublicLoginBrandingService.reset(expectedRevision)
+    );
+  }
+
+  @Get('/workbench-branding/status', {
+    summary: '查询 Host 默认工作台品牌配置',
+  })
+  async workbenchBrandingStatus() {
+    return this.ok(
+      await this.pahPublicLoginBrandingService.hostWorkbenchBrandingStatus()
+    );
+  }
+
+  @Post('/workbench-branding/save', {
+    summary: '保存 Host 默认工作台品牌配置',
+  })
+  async saveWorkbenchBranding(@Files() files, @Fields() fields) {
+    return this.ok(
+      await this.pahPublicLoginBrandingService.saveHostWorkbenchBranding(
+        {
+          title: fields?.title,
+          subtitleMode: fields?.subtitleMode,
+          subtitleText: fields?.subtitleText,
+          expectedRevision: fields?.expectedRevision,
+        },
+        files?.[0]
+      )
+    );
+  }
+
+  @Post('/workbench-branding/reset', {
+    summary: '恢复 Host 内置工作台品牌配置',
+  })
+  async resetWorkbenchBranding(
+    @Body('expectedRevision') expectedRevision: string
+  ) {
+    return this.ok(
+      await this.pahPublicLoginBrandingService.resetHostWorkbenchBranding(
+        expectedRevision
+      )
+    );
+  }
+
+  @Post('/package', { summary: '本地校验并装配 .phoenix.cool 插件包' })
+  async package(@Files() files) {
+    return this.ok(
+      await this.pahPluginPackageService.installLocalPackage(files?.[0])
+    );
+  }
+
+  @Post('/retained-package/restore', {
+    summary: '重新校验并装配 Host 已保留的 Phoenix 插件包',
+  })
+  async restoreRetainedPackage(
+    @Body('moduleId') moduleId: string,
+    @Body('version') version: string,
+    @Body('packageSha256') packageSha256: string
+  ) {
+    return this.ok(
+      await this.pahPluginPackageService.restoreRetainedPackage(
+        moduleId,
+        version,
+        packageSha256
+      )
+    );
+  }
+
+  @Post('/local-backup', { summary: '创建并恢复演练本地插件可信备份' })
+  async localBackup(@Body('moduleId') moduleId: string) {
+    return this.ok(
+      await this.pahPluginPackageService.createLocalBackup(moduleId)
+    );
+  }
+
+  @Get('/local-runtime-status', {
+    summary: '检查本地插件 Node 运行制品是否已随 API 重启加载',
+  })
+  async localRuntimeStatus(@Query('moduleId') moduleId: string) {
+    return this.ok(
+      await this.pahPluginPackageService.localRuntimeStatus(moduleId)
+    );
+  }
+
+  @Post('/local-controlled-install', {
+    summary: '使用服务端一次性计划执行本地受控安装',
+  })
+  async localControlledInstall(@Body('moduleId') moduleId: string) {
+    return this.ok(
+      await this.pahPluginPackageService.controlledInstallLocal(moduleId)
+    );
+  }
+
+  @Post('/local-controlled-uninstall', {
+    summary: '卸载本地插件并保留数据',
+  })
+  async localControlledUninstall(@Body('moduleId') moduleId: string) {
+    return this.ok(
+      await this.pahPluginPackageService.controlledUninstallLocal(moduleId)
+    );
+  }
+
+  @Post('/local-package-discard', {
+    summary: '清理已验证但尚未安装的本机 Node/Vue 插件装配',
+  })
+  async localPackageDiscard(@Body('moduleId') moduleId: string) {
+    return this.ok(
+      await this.pahPluginPackageService.discardLocalPackage(moduleId)
+    );
+  }
+
+  @Post('/register', { summary: '登记并验证插件 manifest' })
+  async register(@Body('manifest') manifest: PahPluginManifest) {
+    return this.ok(await this.pahPluginService.register(manifest));
+  }
+
+  @Post('/install', { summary: '暂存、迁移并安装插件' })
+  async install(@Body('moduleId') moduleId: string) {
+    return this.ok(await this.pahPluginService.install(moduleId));
+  }
+
+  @Get('/migration-plan', { summary: '只读校验迁移制品与待执行计划' })
+  async migrationPlan(@Query('moduleId') moduleId: string) {
+    return this.ok(await this.pahPluginService.migrationPlan(moduleId));
+  }
+
+  @Get('/dictionary-plan', {
+    summary: '只读检查插件字典 catalog 与 Cool 当前数据差异',
+  })
+  async dictionaryPlan(@Query('moduleId') moduleId: string) {
+    return this.ok(await this.pahPluginService.dictionaryPlan(moduleId));
+  }
+
+  @Get('/dictionary-records', {
+    summary: '查询插件字典 reconcile 审计台账',
+  })
+  async dictionaryRecords(
+    @Query('moduleId') moduleId: string,
+    @Query('page') page: unknown,
+    @Query('size') size: unknown
+  ) {
+    return this.ok(
+      await this.pahPluginService.dictionaryRecords(moduleId, page, size)
+    );
+  }
+
+  @Post('/dictionary-reconcile', {
+    summary: '按已确认计划补全已启用插件的产品字典',
+  })
+  async dictionaryReconcile(
+    @Body('moduleId') moduleId: string,
+    @Body('dictionaryFingerprint') dictionaryFingerprint: string,
+    @Body('dictionaryConfirmed') dictionaryConfirmed: boolean
+  ) {
+    return this.ok(
+      await this.pahPluginService.dictionaryReconcile(
+        moduleId,
+        dictionaryFingerprint,
+        dictionaryConfirmed
+      )
+    );
+  }
+
+  @Post('/enable', { summary: '启用插件贡献' })
+  async enable(
+    @Body('moduleId') moduleId: string,
+    @Body('dictionaryFingerprint') dictionaryFingerprint?: string,
+    @Body('dictionaryConfirmed') dictionaryConfirmed?: boolean
+  ) {
+    return this.ok(
+      await this.pahPluginService.enable(
+        moduleId,
+        dictionaryFingerprint,
+        dictionaryConfirmed
+      )
+    );
+  }
+
+  @Post('/disable', { summary: '停用插件贡献' })
+  async disable(@Body('moduleId') moduleId: string) {
+    return this.ok(await this.pahPluginService.disable(moduleId));
+  }
+
+  @Post('/uninstall', { summary: '卸载插件并默认保留业务数据' })
+  async uninstall(
+    @Body('moduleId') moduleId: string,
+    @Body('backupId') backupId: string
+  ) {
+    return this.ok(await this.pahPluginService.uninstall(moduleId, backupId));
+  }
+
+  @Get('/enabled', { summary: '查询已启用插件贡献' })
+  async enabled() {
+    return this.ok(await this.pahPluginService.enabled());
+  }
+
+  @Get('/migration-records', { summary: '查询插件历史迁移台账' })
+  async migrationRecords(@Query('moduleId') moduleId: string) {
+    return this.ok(await this.pahPluginService.migrationRecords(moduleId));
+  }
+}

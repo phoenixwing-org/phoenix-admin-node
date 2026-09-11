@@ -1,4 +1,4 @@
-import { App, Config, Inject, Middleware } from '@midwayjs/core';
+import { Config, Inject, MainApp, Middleware } from '@midwayjs/core';
 import * as _ from 'lodash';
 import { CoolCommException, CoolUrlTagData, TagTypes } from '@cool-midway/core';
 import * as jwt from 'jsonwebtoken';
@@ -67,7 +67,7 @@ export class BaseAuthorityMiddleware
   @Inject()
   coolUrlTagData: CoolUrlTagData;
 
-  @App()
+  @MainApp()
   app: IMidwayApplication;
 
   @Inject()

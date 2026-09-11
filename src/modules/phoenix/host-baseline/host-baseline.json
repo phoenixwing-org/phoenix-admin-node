@@ -1,0 +1,164 @@
+{
+  "formatVersion": 1,
+  "baselineId": "phoenix-admin-host",
+  "version": 2,
+  "sourceCommit": "2bdd0defff41e58c416d6a7431c2b17f4537ab93",
+  "pahHostSchemaVersion": 5,
+  "generator": {
+    "engine": "@cool-midway/typeorm",
+    "version": "0.3.20",
+    "mode": "createSchemaBuilder.log-read-only"
+  },
+  "policy": {
+    "environmentKind": "release-validation",
+    "loopbackHosts": [
+      "127.0.0.1",
+      "::1",
+      "localhost"
+    ],
+    "postgresMajor": 16,
+    "maintenanceDatabases": [
+      "postgres",
+      "template0",
+      "template1"
+    ],
+    "emptyDatabaseOnly": true,
+    "backupRequiredForEmptyDatabase": false,
+    "cleanupResponsibility": "发布验收或环境所有者重建结束后，由本机操作者通过受控流程回收精确数据库。"
+  },
+  "sourceFiles": [
+    {
+      "path": "package.json",
+      "sha256": "6dd55f03d3b90d7c77d28cb94c375b131d91d51ab23be546db021df381a27ae6"
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "sha256": "d7623e49a2566444fe7ea5f0c6dd67e92c41235be28162f1685ca7b76fc90911"
+    },
+    {
+      "path": "src/entities.ts",
+      "sha256": "7856608a17891f5aa04cac1a662558e21c335a8340f384237802f9abaee8395d"
+    },
+    {
+      "path": "src/modules/phoenix/pah-host-schema.json",
+      "sha256": "f0f28b1914216945b6bb6b957d3a1384263954ad3aa1cd4046b572e7acd6f422"
+    },
+    {
+      "path": "src/modules/phoenix/host-baseline/schema/0001-host-entities.sql",
+      "sha256": "ef772216079ec96bdcfc66f5fe202877131b686814db25ed1eac251d699bf24e"
+    },
+    {
+      "path": "src/modules/phoenix/host-baseline/schema/0002-pah-dictionary-reconcile.sql",
+      "sha256": "c9f33662bf2714da5ec84b2282795b9ca24fabd8bb65753b9d16a7188347fe7f"
+    },
+    {
+      "path": "src/modules/phoenix/host-baseline/schema/0003-pah-dictionary-governance.sql",
+      "sha256": "2a6d89cde9e978f63aad61a1c4314dc9dd98e77a6301e43975b1c661368f5f1b"
+    },
+    {
+      "path": "src/modules/phoenix/schema/0003-external-identity.sql",
+      "sha256": "00f7d8367641e1d76ddeb3f064363aa5181a7ed8635b5a7e6a017421c523542d"
+    },
+    {
+      "path": "src/modules/phoenix/schema/0004-dictionary-menu-route.sql",
+      "sha256": "3e28db22028611223fdb5b7c226c9f5c83092cefc6a777e6948f11d3ae02233f"
+    },
+    {
+      "path": "src/modules/phoenix/schema/0005-host-files-v1.sql",
+      "sha256": "a3e62c784f15a4864211128dc44f6f16d187690ef9e56b0f2f81fd194d6fb65d"
+    },
+    {
+      "path": "src/modules/base/service/sys/login.ts",
+      "sha256": "1f567e016a2920f19b0640a7786c7e0096c89b0361a2d87fbf02865c818ac6f4"
+    }
+  ],
+  "schemaArtifacts": [
+    {
+      "id": "phoenix-admin-host-entities",
+      "path": "schema/0001-host-entities.sql",
+      "size": 42903,
+      "sha256": "ef772216079ec96bdcfc66f5fe202877131b686814db25ed1eac251d699bf24e"
+    },
+    {
+      "id": "phoenix-host-dictionary-reconcile",
+      "path": "schema/0002-pah-dictionary-reconcile.sql",
+      "size": 4694,
+      "sha256": "c9f33662bf2714da5ec84b2282795b9ca24fabd8bb65753b9d16a7188347fe7f"
+    },
+    {
+      "id": "phoenix-host-dictionary-governance",
+      "path": "schema/0003-pah-dictionary-governance.sql",
+      "size": 4166,
+      "sha256": "2a6d89cde9e978f63aad61a1c4314dc9dd98e77a6301e43975b1c661368f5f1b"
+    },
+    {
+      "id": "phoenix-host-external-identity",
+      "path": "schema/0004-pah-external-identity.sql",
+      "size": 16408,
+      "sha256": "00f7d8367641e1d76ddeb3f064363aa5181a7ed8635b5a7e6a017421c523542d"
+    },
+    {
+      "id": "phoenix-host-dictionary-menu-route",
+      "path": "schema/0005-phoenix-dictionary-menu-route.sql",
+      "size": 895,
+      "sha256": "3e28db22028611223fdb5b7c226c9f5c83092cefc6a777e6948f11d3ae02233f"
+    },
+    {
+      "id": "phoenix-host-files-v1",
+      "path": "schema/0006-phoenix-host-files-v1.sql",
+      "size": 17709,
+      "sha256": "a3e62c784f15a4864211128dc44f6f16d187690ef9e56b0f2f81fd194d6fb65d"
+    }
+  ],
+  "adminSeedArtifact": {
+    "id": "phoenix-admin-release-validation-admin",
+    "path": "seed/0001-release-validation-admin.sql",
+    "size": 2124,
+    "sha256": "d0da3407494d5b6da228d8768edd2786436433c3717cc8004828fd6b18c7b7e0"
+  },
+  "requiredRelations": [
+    "base_sys_conf",
+    "base_sys_department",
+    "base_sys_log",
+    "base_sys_menu",
+    "base_sys_param",
+    "base_sys_role",
+    "base_sys_role_department",
+    "base_sys_role_menu",
+    "base_sys_user",
+    "base_sys_user_role",
+    "demo_goods",
+    "dict_info",
+    "dict_type",
+    "pah_dictionary_reconcile_record",
+    "pah_external_bind_request",
+    "pah_external_identity",
+    "pah_file_audit_record",
+    "pah_file_binding",
+    "pah_file_descriptor",
+    "pah_navigation_group",
+    "pah_navigation_group_assignment",
+    "pah_oauth_login_attempt",
+    "pah_oauth_login_ticket",
+    "pah_plugin_installation",
+    "pah_plugin_menu_contribution",
+    "pah_plugin_migration_record",
+    "pah_plugin_role_grant",
+    "plugin_info",
+    "recycle_data",
+    "space_info",
+    "space_type",
+    "task_info",
+    "task_log",
+    "user_address",
+    "user_info",
+    "user_wx"
+  ],
+  "expectedSchema": {
+    "columns": 421,
+    "indexes": 196,
+    "constraints": 61,
+    "sequences": 36,
+    "sha256": "98959a1522da63c3ebdcd1f8a91fc9467d5ad81cf6835e81dfd1dc6a78fbed2b"
+  }
+}

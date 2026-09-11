@@ -6,6 +6,7 @@ import {
   Get,
   Query,
   Config,
+  Param,
 } from '@midwayjs/core';
 import {
   CoolController,
@@ -21,12 +22,13 @@ import { BaseSysLoginService } from '../../service/sys/login';
 import { BaseSysParamService } from '../../service/sys/param';
 import { Context } from '@midwayjs/koa';
 import { Validate } from '@midwayjs/validate';
-import { PahIdentityService } from '../../../pah/service/identity';
+import { PahIdentityService } from '../../../phoenix/service/identity';
 import {
   pahIdentityCallbackUrl,
   PahIdentityConfig,
   PahIdentityFlowError,
-} from '../../../pah/interface/identity';
+} from '../../../phoenix/interface/identity';
+import { PahPublicLoginBrandingService } from '../../../phoenix/service/public-login-branding';
 
 /**
  * 不需要登录的后台接口
@@ -50,7 +52,10 @@ export class BaseOpenController extends BaseController {
   @Inject()
   pahIdentityService: PahIdentityService;
 
-  @Config('module.pah.identity')
+  @Inject()
+  pahPublicLoginBrandingService: PahPublicLoginBrandingService;
+
+  @Config('module.phoenix.identity')
   identityConfig: PahIdentityConfig;
 
   /**
@@ -87,7 +92,45 @@ export class BaseOpenController extends BaseController {
   @CoolTag(TagTypes.IGNORE_TOKEN)
   @Get('/login-policy', { summary: '后台登录方式与就绪状态' })
   async loginPolicy() {
-    return this.ok(this.pahIdentityService.loginPolicy());
+    return this.ok({
+      ...this.pahIdentityService.loginPolicy(),
+      captchaRequired: this.baseSysLoginService.captchaRequired(),
+    });
+  }
+
+  /**
+   * HTML 解析阶段同步执行的公开登录品牌快照。
+   * 只返回 Host 固定 wrapper 与严格白名单 JSON，不执行插件脚本。
+   */
+  @CoolTag(TagTypes.IGNORE_TOKEN)
+  @Get('/public-login-branding', { summary: '公开登录品牌启动快照' })
+  async publicLoginBrandingBootstrap() {
+    this.ctx.status = 200;
+    this.ctx.type = 'application/javascript; charset=utf-8';
+    this.ctx.set('Cache-Control', 'no-store, max-age=0');
+    this.ctx.set('Pragma', 'no-cache');
+    this.ctx.set('X-Content-Type-Options', 'nosniff');
+    this.ctx.body = this.pahPublicLoginBrandingService.bootstrapScript();
+  }
+
+  /** 内容哈希 URL；资源仅来自已校验、已安装的插件包。 */
+  @CoolTag(TagTypes.IGNORE_TOKEN)
+  @Get('/public-login-branding/assets/:digest/:filename', {
+    summary: '公开登录品牌哈希资源',
+  })
+  async publicLoginBrandingAsset(
+    @Param('digest') digest: string,
+    @Param('filename') filename: string
+  ) {
+    const asset = this.pahPublicLoginBrandingService.readPublicAsset(
+      digest,
+      filename
+    );
+    this.ctx.status = 200;
+    this.ctx.type = asset.mime;
+    this.ctx.set('Cache-Control', 'public, max-age=31536000, immutable');
+    this.ctx.set('X-Content-Type-Options', 'nosniff');
+    this.ctx.body = asset.content;
   }
 
   @CoolTag(TagTypes.IGNORE_TOKEN)

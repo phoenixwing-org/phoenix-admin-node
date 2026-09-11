@@ -1,5 +1,5 @@
 import {
-  App,
+  MainApp,
   IMidwayApplication,
   Inject,
   InjectClient,
@@ -34,7 +34,7 @@ export class PluginCenterService {
   // 插件配置
   pluginInfos: Map<string, PluginInfo> = new Map();
 
-  @App()
+  @MainApp()
   app: IMidwayApplication;
 
   @InjectEntityModel(PluginInfoEntity)
@@ -45,9 +45,6 @@ export class PluginCenterService {
 
   @Inject()
   coolEventManager: CoolEventManager;
-
-  @Inject()
-  pluginService: PluginService;
 
   /**
    * 初始化
@@ -96,7 +93,7 @@ export class PluginCenterService {
       const instance = new cls();
       await instance.init(this.pluginInfos.get(key), null, this.app, {
         cache: this.midwayCache,
-        pluginService: this.pluginService,
+        pluginService: await this.getPluginService(),
       });
       this.plugins.set(key, instance);
     } else {
@@ -159,7 +156,9 @@ export class PluginCenterService {
       ],
     });
     for (const plugin of plugins) {
-      const data = await this.pluginService.getData(plugin.keyName);
+      const data = await (
+        await this.getPluginService()
+      ).getData(plugin.keyName);
       if (!data) {
         continue;
       }
@@ -176,6 +175,10 @@ export class PluginCenterService {
         await this.register(plugin.keyName, instance, pluginInfo);
       }
     }
+  }
+
+  private async getPluginService() {
+    return this.app.getApplicationContext().getAsync(PluginService);
   }
 
   /**

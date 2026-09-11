@@ -15,10 +15,10 @@
 
 | 项目 | 冻结值 |
 | --- | --- |
-| Node worktree | `/Users/kathy/phoenix/.worktrees/phoenix-admin-clean-validation/node` |
+| Node worktree | `<workspace>/worktrees/phoenix-admin-clean-validation/node` |
 | Node 分支 | `codex/admin-clean-install-node` |
 | Node 阶段提交 | `241bc53230efbc2288d843f2f40c65e435651150` |
-| Vue worktree | `/Users/kathy/phoenix/.worktrees/phoenix-admin-clean-validation/vue` |
+| Vue worktree | `<workspace>/worktrees/phoenix-admin-clean-validation/vue` |
 | Vue 分支 | `codex/admin-clean-install-vue` |
 | Vue 阶段提交 | `bf6795fe207029b189ad0910361a184375e4cb10` |
 | 数据库 | `phoenix_admin_clean_validation_20260805` |
@@ -82,8 +82,9 @@ Open Issue 启用后，业务 Ribbon、菜单和页面已可访问。卸载流�
 
 ## 当前 Git 边界
 
-Node worktree 仅保留运行装配生成的 `src/entities.ts` 未提交。该文件不是本轮人工源码提交，
-不得混入功能或文档归档。Vue 阶段提交后工作树为 clean。
+Node worktree 当时仅保留运行装配生成的 `src/entities.ts` 未提交。该文件不是该轮人工源码提交，
+不得混入功能或文档归档。Vue 阶段提交后工作树为 clean。后续 Host 已把该路径收口为 ignored
+运行时生成物；本段保留为 2026-08-05 的历史现场，而不是当前操作要求。
 
 两个阶段分支均为本地分支，未 push。主开发 worktree 中其他任务的未提交文件不属于本轮，
 未暂存、未 stash、未 restore、未格式化。
@@ -94,8 +95,9 @@ Node worktree 仅保留运行装配生成的 `src/entities.ts` 未提交。该�
    容器中真正热插拔。后续研究见动态插件热加载 TODO。
 2. **重启尚需用户操作 Terminal**：第三步已经成为正式流程并有运行时检查，但还没有由
    Host supervisor 自动排空请求、重启和失败回滚。
-3. **运行装配会更新生成文件**：本地开发装配会使 `src/entities.ts` 变脏。正式发布应在
-   一次性 assembly 中生成和构建，不应污染长期源码 worktree。
+3. **运行装配生成文件（后续已解决）**：2026-08-05 的本地开发装配会使 tracked
+   `src/entities.ts` 变脏；当前该路径已改为 ignored 运行时输出，正式发布仍应在一次性 assembly
+   中重新生成和构建，但不再污染长期源码 worktree。
 4. **存在既有 `cl-svg` Vue warning**：浏览器新会话仍可看到 Host 的 `cl-svg` component
    resolve 警告。它与本轮插件安装步骤无直接关系，但不能把当前控制台记录宣称为 warn=0。
 5. **最新增量未重跑完整 production build**：为保持 8201/9100 供用户继续测试，本轮第三步
@@ -118,4 +120,3 @@ Node worktree 仅保留运行装配生成的 `src/entities.ts` 未提交。该�
 6. 卸载后核对业务表和 migration ledger 保留，再执行同版本重装；
 7. 在停止 watch 服务后运行 Node/Vue production build；
 8. 单独归档 `cl-svg` warning 和动态热加载研究结果。
-

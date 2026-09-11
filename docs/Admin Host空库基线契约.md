@@ -2,15 +2,18 @@
 
 ## 用途与冻结输入
 
-`src/modules/pah/host-baseline/host-baseline.json` 是 Admin Host 空库基线的唯一清单。
-v1 绑定 Node Host `0d94cbfd3179ab327ffb35ec653cbf1869d13c1d`，包含该提交 tracked
-`src/entities.ts` 的 29 个 Host relation，以及同一提交的 Pah Host schema v2 字典治理。
-它不包含之后新增的外部身份四表，也不执行 Pah Host identity 0003。
+`src/modules/phoenix/host-baseline/host-baseline.json` 是 Admin Host 空库基线的唯一清单。
+当前可执行 v2 绑定 Node Host `2bdd0defff41e58c416d6a7431c2b17f4537ab93`，包含该提交
+tracked `src/entities.ts` 的 36 个 Host relation、schema v5 字典治理、外部身份四表与
+Host Files v1 三表。历史 v1 的 29 表边界已归档，不再作为新建环境基线。
 
-运行时只读取清单内三份已版本化 SQL。TypeORM metadata 只用于一次性生成
+运行时只读取清单内六份已版本化、自包含 SQL。TypeORM metadata 只用于一次性生成
 `0001-host-entities.sql` 候选，不参与 plan 或 apply，也不会调用 `synchronize`、`initDB`
 或 `initMenu`。清单逐文件锁定 size/SHA-256，并通过现有 Git 仓内的冻结 commit object
 和 `git show <commit>:<path>` 复核来源；不要求额外 checkout 或 worktree。
+清单 `sourceFiles` 固定使用冻结提交中的真实路径；运行入口和基线清单目录统一使用
+`src/modules/phoenix/*`。v2 的完整结构指纹由环境所有者在精确 PostgreSQL 16 空库中生成，
+列 421、索引 196、约束 61、序列 36，并由聚焦测试复核当前实体与六份制品闭包。
 
 ## 安全边界
 
@@ -18,14 +21,14 @@ v1 绑定 Node Host `0d94cbfd3179ab327ffb35ec653cbf1869d13c1d`，包含该提交
 - PostgreSQL 必须是 16.x，地址必须是 loopback。
 - `PAH_HOST_BASELINE_DB_DATABASE` 必须与
   `PAH_HOST_BASELINE_ALLOWED_DATABASE` 完全相同，且不能是 maintenance 数据库。
-- 首次 apply 只接受 public schema 精确空库；三份 SQL 在同一 serializable transaction
-  与 advisory lock 下执行，提交前核对 29 表、列、索引、约束和序列的完整结构指纹。
+- 首次 apply 只接受 public schema 精确空库；六份 SQL 在同一 serializable transaction
+  与 advisory lock 下执行，提交前核对 36 表、列、索引、约束和序列的完整结构指纹。
 - 已精确匹配的 baseline 重复 apply 是只读 noop；partial、额外 relation 或结构指纹不匹配
   都 fail-closed。
 - 空库没有需要备份的业务数据，因此 schema apply 的 `backupRequired=false`。数据库整体
-  是回滚边界；验收结束后的删除由 Dev Hub 受控回收流程和本机操作者负责。
-- baseline 不安装 COOL/Pah 业务插件，不写插件 migration、菜单、角色、导航或字典 reconcile
-  台账。`verify` 会报告这些计数以及 29 表逐表行数。
+  是回滚边界；验收结束后的删除由 Hub 受控回收流程和本机操作者负责。
+- baseline 不安装 COOL/Phoenix 业务插件，不写插件 migration、菜单、角色、导航或字典 reconcile
+  台账。`verify` 会报告这些计数以及 36 表逐表行数。
 
 ## 正式 plan、apply 与 verify
 
@@ -62,7 +65,7 @@ pnpm run host:baseline -- verify
 
 schema 与登录 seed 分开。没有默认用户名、默认口令或固定 hash；manifest、SQL、输出和日志
 都不保存明文或密码 hash。用户名和一次性密码都不得超过登录页的 20 字符上限，密码至少
-12 字符。只有刚完成 baseline 且所有 29 表仍为空时才允许 seed：
+12 字符。只有刚完成 baseline 且所有 36 表仍为空时才允许 seed：
 
 ```shell
 export PAH_HOST_BASELINE_ADMIN_USERNAME='<one-time-local-admin>'
@@ -92,7 +95,7 @@ export PAH_HOST_BASELINE_CONFIRMATION='<confirmation-from-reset-admin-plan>'
 pnpm run host:baseline -- reset-admin
 ```
 
-plan 只读核对 29 表结构、`id=1` 唯一用户、当前用户名逐字匹配、部门/角色/用户/用户角色四项
+plan 只读核对 36 表结构、`id=1` 唯一用户、当前用户名逐字匹配、部门/角色/用户/用户角色四项
 关系各一行、目标用户名无冲突且插件/Pah 台账全零。confirmation 绑定数据库、baseline 版本、
 当前用户名、新用户名和新密码的 SHA-256 摘要；不会单独输出新密码或数据库保存的 MD5。
 apply 在 serializable transaction、advisory lock 和 `SELECT ... FOR UPDATE` 下再次核对，只更新

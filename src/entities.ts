@@ -1,4 +1,5 @@
-// 自动生成的文件，请勿手动修改
+// Phoenix Admin Host 固定实体入口；插件实体由 ignored 的 entities.plugin.ts 追加。
+import { pluginEntities } from './entities.plugin';
 import * as entity0 from './modules/user/entity/wx';
 import * as entity1 from './modules/user/entity/info';
 import * as entity2 from './modules/user/entity/address';
@@ -8,17 +9,17 @@ import * as entity5 from './modules/space/entity/type';
 import * as entity6 from './modules/space/entity/info';
 import * as entity7 from './modules/recycle/entity/data';
 import * as entity8 from './modules/plugin/entity/info';
-import * as entity9 from './modules/pah/entity/role-grant';
-import * as entity10 from './modules/pah/entity/plugin';
-import * as entity11 from './modules/pah/entity/oauth-login-ticket';
-import * as entity12 from './modules/pah/entity/oauth-login-attempt';
-import * as entity13 from './modules/pah/entity/navigation-group';
-import * as entity14 from './modules/pah/entity/navigation-group-assignment';
-import * as entity15 from './modules/pah/entity/migration-record';
-import * as entity16 from './modules/pah/entity/menu-contribution';
-import * as entity17 from './modules/pah/entity/external-identity';
-import * as entity18 from './modules/pah/entity/external-bind-request';
-import * as entity19 from './modules/pah/entity/dictionary-reconcile-record';
+import * as entity9 from './modules/phoenix/entity/role-grant';
+import * as entity10 from './modules/phoenix/entity/plugin';
+import * as entity11 from './modules/phoenix/entity/oauth-login-ticket';
+import * as entity12 from './modules/phoenix/entity/oauth-login-attempt';
+import * as entity13 from './modules/phoenix/entity/navigation-group';
+import * as entity14 from './modules/phoenix/entity/navigation-group-assignment';
+import * as entity15 from './modules/phoenix/entity/migration-record';
+import * as entity16 from './modules/phoenix/entity/menu-contribution';
+import * as entity17 from './modules/phoenix/entity/external-identity';
+import * as entity18 from './modules/phoenix/entity/external-bind-request';
+import * as entity19 from './modules/phoenix/entity/dictionary-reconcile-record';
 import * as entity20 from './modules/dict/entity/type';
 import * as entity21 from './modules/dict/entity/info';
 import * as entity22 from './modules/demo/entity/goods';
@@ -33,6 +34,9 @@ import * as entity30 from './modules/base/entity/sys/menu';
 import * as entity31 from './modules/base/entity/sys/log';
 import * as entity32 from './modules/base/entity/sys/department';
 import * as entity33 from './modules/base/entity/sys/conf';
+import * as entity34 from './modules/phoenix/entity/file-descriptor';
+import * as entity35 from './modules/phoenix/entity/file-binding';
+import * as entity36 from './modules/phoenix/entity/file-audit-record';
 export const entities = [
   ...Object.values(entity0),
   ...Object.values(entity1),
@@ -68,4 +72,8 @@ export const entities = [
   ...Object.values(entity31),
   ...Object.values(entity32),
   ...Object.values(entity33),
+  ...Object.values(entity34),
+  ...Object.values(entity35),
+  ...Object.values(entity36),
+  ...pluginEntities,
 ];

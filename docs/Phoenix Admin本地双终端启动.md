@@ -1,13 +1,13 @@
 # Phoenix Admin 本地双终端启动
 
-本页用于已经完成一次干净初始化后的日常开发与插件安装验证。前后端分别占用一个 VS Code 终端，方便直接观察日志；不需要 Dev Hub。
+本页用于已经完成一次干净初始化后的日常开发与插件安装验证。前后端分别占用一个 VS Code 终端，方便直接观察日志；不需要 Hub。
 
 ## 1. 端口与目录
 
 | 服务      | 目录                                                                  | 端口 | 日志位置                                                          |
 | --------- | --------------------------------------------------------------------- | ---: | ----------------------------------------------------------------- |
-| Admin API | `/Users/kathy/phoenix/.worktrees/phoenix-admin-clean-validation/node` | 8201 | VS Code 的 `Admin API` 终端                                       |
-| Admin Web | `/Users/kathy/phoenix/.worktrees/phoenix-admin-clean-validation/vue`  | 9100 | VS Code 的 `Admin Web` 终端；页面请求细节看浏览器 Console/Network |
+| Admin API | `<workspace>/worktrees/phoenix-admin-clean-validation/node` | 8201 | VS Code 的 `Admin API` 终端                                       |
+| Admin Web | `<workspace>/worktrees/phoenix-admin-clean-validation/vue`  | 9100 | VS Code 的 `Admin Web` 终端；页面请求细节看浏览器 Console/Network |
 
 数据库使用已经初始化好的 `phoenix_admin_clean_validation_20260805`。日常重启必须保持 `PAH_DB_SYNCHRONIZE=false`、`PAH_DB_INITIALIZE=false`，避免重复执行 Cool 初始化。
 
@@ -34,7 +34,7 @@ kill -TERM <9100的PID>
 在 VS Code 新建终端并命名为 `Admin API`：
 
 ```bash
-cd /Users/kathy/phoenix/.worktrees/phoenix-admin-clean-validation/node
+cd <workspace>/worktrees/phoenix-admin-clean-validation/node
 PAH_SERVER_PORT=8201 \
 PAH_DB_DATABASE=phoenix_admin_clean_validation_20260805 \
 PAH_DB_SYNCHRONIZE=false \
@@ -49,7 +49,7 @@ pnpm dev
 在 VS Code 再新建终端并命名为 `Admin Web`：
 
 ```bash
-cd /Users/kathy/phoenix/.worktrees/phoenix-admin-clean-validation/vue
+cd <workspace>/worktrees/phoenix-admin-clean-validation/vue
 PAH_API_TARGET=http://127.0.0.1:8201 \
 VITE_PAH_API_TARGET=http://127.0.0.1:8201 \
 pnpm exec vite --host 127.0.0.1 --strictPort --port 9100

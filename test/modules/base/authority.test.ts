@@ -186,33 +186,37 @@ describe('非 root Pah endpoint 权限旅程', () => {
     expect(next).toHaveBeenCalledTimes(1);
   });
 
-  it('身份管理接口保持 root 200、普通用户 403、匿名 401', async () => {
-    const endpoint = '/admin/pah/identity/bind-request/list';
-    const next = jest.fn().mockResolvedValue(undefined);
+  it('身份管理新旧接口均保持 root 200、普通用户 403、匿名 401', async () => {
+    for (const endpoint of [
+      '/admin/phoenix/identity/bind-request/list',
+      '/admin/pah/identity/bind-request/list',
+    ]) {
+      const next = jest.fn().mockResolvedValue(undefined);
 
-    const root = middlewareFixture([]);
-    root.verify.mockReturnValue({
-      userId: 7,
-      username: 'admin',
-      passwordVersion: 3,
-      isRefresh: false,
-    } as any);
-    await root.middleware.resolve()(context('GET', endpoint), next);
-    expect(next).toHaveBeenCalledTimes(1);
+      const root = middlewareFixture([]);
+      root.verify.mockReturnValue({
+        userId: 7,
+        username: 'admin',
+        passwordVersion: 3,
+        isRefresh: false,
+      } as any);
+      await root.middleware.resolve()(context('GET', endpoint), next);
+      expect(next).toHaveBeenCalledTimes(1);
 
-    jest.restoreAllMocks();
-    const operator = middlewareFixture([]);
-    await expect(
-      operator.middleware.resolve()(context('GET', endpoint), jest.fn())
-    ).rejects.toMatchObject({ statusCode: 403 });
+      jest.restoreAllMocks();
+      const operator = middlewareFixture([]);
+      await expect(
+        operator.middleware.resolve()(context('GET', endpoint), jest.fn())
+      ).rejects.toMatchObject({ statusCode: 403 });
 
-    jest.restoreAllMocks();
-    const anonymous = middlewareFixture([]);
-    anonymous.verify.mockImplementation(() => {
-      throw new Error('missing token');
-    });
-    await expect(
-      anonymous.middleware.resolve()(context('GET', endpoint), jest.fn())
-    ).rejects.toMatchObject({ statusCode: 401 });
+      jest.restoreAllMocks();
+      const anonymous = middlewareFixture([]);
+      anonymous.verify.mockImplementation(() => {
+        throw new Error('missing token');
+      });
+      await expect(
+        anonymous.middleware.resolve()(context('GET', endpoint), jest.fn())
+      ).rejects.toMatchObject({ statusCode: 401 });
+    }
   });
 });

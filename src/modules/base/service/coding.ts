@@ -1,4 +1,10 @@
-import { App, IMidwayApplication, Init, Inject, Provide } from '@midwayjs/core';
+import {
+  MainApp,
+  IMidwayApplication,
+  Init,
+  Inject,
+  Provide,
+} from '@midwayjs/core';
 import { BaseService } from '@cool-midway/core';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -8,7 +14,7 @@ import * as path from 'path';
  */
 @Provide()
 export class BaseCodingService extends BaseService {
-  @App()
+  @MainApp()
   app: IMidwayApplication;
 
   /**

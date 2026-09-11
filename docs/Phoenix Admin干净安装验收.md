@@ -3,9 +3,9 @@
 ## 目标
 
 此流程验证一个不包含 Open Issue、Function、BOM 或其他业务插件的 Phoenix Admin Host。
-它保留 Cool Admin 原有运行命令和初始化资产：
+它保留 Cool Admin 原有初始化资产，并使用与 Vue dev 明确兼容的受控 API 模式：
 
-- Node 仍以 `pnpm start` 运行；
+- Node 使用已构建制品和 `NODE_ENV=local` 启动，因此 `/admin/base/open/eps` 保持可用；
 - Vue 仍以 `pnpm dev` 运行；
 - 首次启动显式开启 `PAH_DB_SYNCHRONIZE=true` 和 `PAH_DB_INITIALIZE=true`，由 Cool
   读取各 Host 模块的 `db.json` 与 `menu.json`；
@@ -22,14 +22,14 @@
 以下路径与分支专用于干净安装验证，不复用带本机业务插件 symlink 的开发目录：
 
 ```shell
-mkdir -p /Users/kathy/phoenix/.worktrees/phoenix-admin-clean-validation
+mkdir -p <workspace>/worktrees/phoenix-admin-clean-validation
 
-git -C /Users/kathy/phoenix/phoenix-admin-node worktree add \
-  /Users/kathy/phoenix/.worktrees/phoenix-admin-clean-validation/node \
+git -C <workspace>/phoenix-admin-node worktree add \
+  <workspace>/worktrees/phoenix-admin-clean-validation/node \
   codex/admin-clean-install-node
 
-git -C /Users/kathy/phoenix/phoenix-admin-vue worktree add \
-  /Users/kathy/phoenix/.worktrees/phoenix-admin-clean-validation/vue \
+git -C <workspace>/phoenix-admin-vue worktree add \
+  <workspace>/worktrees/phoenix-admin-clean-validation/vue \
   codex/admin-clean-install-vue
 ```
 
@@ -41,16 +41,16 @@ git -C /Users/kathy/phoenix/phoenix-admin-vue worktree add \
 首次安装依赖：
 
 ```shell
-pnpm --dir /Users/kathy/phoenix/.worktrees/phoenix-admin-clean-validation/node install --frozen-lockfile
-pnpm --dir /Users/kathy/phoenix/.worktrees/phoenix-admin-clean-validation/vue install --frozen-lockfile
+pnpm --dir <workspace>/worktrees/phoenix-admin-clean-validation/node install --frozen-lockfile
+pnpm --dir <workspace>/worktrees/phoenix-admin-clean-validation/vue install --frozen-lockfile
 ```
 
 随后只需一条命令：
 
 ```shell
-pnpm --dir /Users/kathy/phoenix/.worktrees/phoenix-admin-clean-validation/node \
+pnpm --dir <workspace>/worktrees/phoenix-admin-clean-validation/node \
   admin:clean-validation -- \
-  --vue-root /Users/kathy/phoenix/.worktrees/phoenix-admin-clean-validation/vue \
+  --vue-root <workspace>/worktrees/phoenix-admin-clean-validation/vue \
   --database phoenix_admin_clean_validation_20260805 \
   --api-port 8201 \
   --web-port 9100
@@ -59,35 +59,44 @@ pnpm --dir /Users/kathy/phoenix/.worktrees/phoenix-admin-clean-validation/node \
 脚本只接受本机 PostgreSQL，拒绝 `postgres/template*/phoenix_admin` 等保留数据库；目标必须是
 空库或已经通过该脚本验证的干净基线。它不会删除、覆盖或恢复已有数据库。
 
-空库先使用 Cool 原生 `db.json` / `menu.json` 初始化默认管理员、角色和菜单，随后按
-`pah-host-schema.json` 校验 SHA-256 并等幂应用 Host schema。后者补齐字典
+空库先使用 Cool 原生 `db.json` / `menu.json` 初始化默认管理员、角色和菜单。脚本必须同时
+确认 API 已监听、`/admin/base/open/eps` 返回包含登录接口的非空契约、数据库基线 ready；随后
+停止初始化 API 并确认整个进程组退出，再按 `pah-host-schema.json` 校验 SHA-256 并等幂应用
+Host schema。后者补齐字典
 `enabled`、`tags`、`core`、`ownerModuleId` 字段、治理索引和其他 Host 自有表；重复运行只做
-兼容性校验和幂等补齐。正式服务启动时仍关闭 `synchronize`、`initDB` 与 `initMenu`，不会在
-普通运行阶段隐式执行 DDL。
+兼容性校验和幂等补齐。正常 API 仍运行在 local EPS 模式，但关闭 `synchronize`、`initDB` 与
+`initMenu`，不会在普通运行阶段隐式执行 DDL。
 
 如果 Node/Vue 已完成 build，可加 `--skip-build`。数据库账户默认取 `PAH_DB_USERNAME` 或当前
 系统用户；需要密码时只通过 `PAH_DB_PASSWORD` 传入，脚本不会打印密码。
 
-## 分目录运行（与 Cool 命令完全相同）
+## 分目录运行（与脚本受控模式相同）
 
-如果不使用一键脚本，先确保目标为空库，然后在 Node worktree 执行第一次初始化：
+如果不使用一键脚本，先完成 Node build 并确保目标为空库，然后在 Node worktree 执行第一次
+初始化：
 
 ```shell
+pnpm build
+NODE_ENV=local \
+PAH_DEV_DISABLE_CAPTCHA=true \
 PAH_SERVER_PORT=8201 \
 PAH_DB_DATABASE=phoenix_admin_clean_validation_20260805 \
 PAH_DB_SYNCHRONIZE=true \
 PAH_DB_INITIALIZE=true \
-pnpm start
+node bootstrap.js
 ```
 
-确认日志出现 Cool module database/menu import complete 后停止，再以正常配置启动：
+必须确认 API、非空 EPS 和 Cool database/menu 初始化全部 ready 后再停止，并确认整个进程组已经
+退出。完成 Host schema 受控应用后，以正常配置启动：
 
 ```shell
+NODE_ENV=local \
+PAH_DEV_DISABLE_CAPTCHA=true \
 PAH_SERVER_PORT=8201 \
 PAH_DB_DATABASE=phoenix_admin_clean_validation_20260805 \
 PAH_DB_SYNCHRONIZE=false \
 PAH_DB_INITIALIZE=false \
-pnpm start
+node bootstrap.js
 ```
 
 在 Vue worktree 启动：

@@ -1,4 +1,4 @@
-import { Inject, Provide } from '@midwayjs/core';
+import { IMidwayApplication, Inject, MainApp, Provide } from '@midwayjs/core';
 import { BaseService } from '@cool-midway/core';
 import { InjectEntityModel } from '@midwayjs/typeorm';
 import { In, Repository } from 'typeorm';
@@ -22,8 +22,8 @@ export class BaseSysDepartmentService extends BaseService {
   @InjectEntityModel(BaseSysRoleDepartmentEntity)
   baseSysRoleDepartmentEntity: Repository<BaseSysRoleDepartmentEntity>;
 
-  @Inject()
-  baseSysPermsService: BaseSysPermsService;
+  @MainApp()
+  app: IMidwayApplication;
 
   @Inject()
   ctx;
@@ -32,8 +32,11 @@ export class BaseSysDepartmentService extends BaseService {
    * 获得部门菜单
    */
   async list() {
+    const baseSysPermsService = await this.app
+      .getApplicationContext()
+      .getAsync(BaseSysPermsService);
     // 部门权限
-    const permsDepartmentArr = await this.baseSysPermsService.departmentIds(
+    const permsDepartmentArr = await baseSysPermsService.departmentIds(
       this.ctx.admin.userId
     );
 
